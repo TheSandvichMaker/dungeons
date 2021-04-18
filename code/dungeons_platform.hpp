@@ -13,14 +13,60 @@
 #define AssertSlow(x) 
 #endif
 
+#define FILE_AND_LINE_STRING__(File, Line) File ":" #Line
+#define FILE_AND_LINE_STRING_(File, Line) FILE_AND_LINE_STRING__(File, Line)
+#define FILE_AND_LINE_STRING FILE_AND_LINE_STRING_(__FILE__, __LINE__)
+#define LOCATION_STRING(...) FILE_AND_LINE_STRING " (" __VA_ARGS__ ")"
+
+#define INVALID_CODE_PATH Assert(!"Invalid Code Path!");
+#define INVALID_DEFAULT_CASE default: { Assert(!"Invalid Default Case!"); } break;
+#define INCOMPLETE_SWITCH default: { /* nah */ } break;
+
+#define Paste__(a, b) a##b
+#define Paste_(a, b) Paste__(a, b)
+#define Paste(a, b) Paste_(a, b)
+#define Stringize__(x) #x
+#define Stringize_(x) Stringize__(x)
+#define Stringize(x) Stringize_(x)
+#define Expand_(x) x
+#define Expand(x) Expand(x)
+
+#define BitIsSet(mask, bit) ((mask) & ((u64)1 << bit))
+#define SetBit(mask, bit)   ((mask) |= ((u64)1 << bit))
+#define UnsetBit(mask, bit) ((mask) &= ~((u64)1 << bit))
+
+#define AlignPow2(value, align) (((value) + ((align) - 1)) & ~((align) - 1))
+#define Align4(value) ((value + 3) & ~3)
+#define Align8(value) ((value + 7) & ~7)
+#define Align16(value) ((value + 15) & ~15)
+
+#define Kilobytes(x) ((x)*1024ull)
+#define Megabytes(x) (Kilobytes(x)*1024ull)
+#define Gigabytes(x) (Megabytes(x)*1024ull)
+#define Terabytes(x) (Gigabytes(x)*1024ull)
+
 #include "dungeons_types.hpp"
 
 enum PlatformEventType
 {
+    PlatformEvent_None,
+    PlatformEvent_Any = PlatformEvent_None,
     PlatformEvent_MouseUp,
     PlatformEvent_MouseDown,
     PlatformEvent_KeyUp,
     PlatformEvent_KeyDown,
+    PlatformEvent_Text,
+    PlatformEvent_COUNT,
+};
+
+const char *PlatformEventType_Name[] =
+{
+    "PlatformEvent_None",
+    "PlatformEvent_MouseUp",
+    "PlatformEvent_MouseDown",
+    "PlatformEvent_KeyUp",
+    "PlatformEvent_KeyDown",
+    "PlatformEvent_COUNT",
 };
 
 enum PlatformMouseButton
@@ -28,6 +74,15 @@ enum PlatformMouseButton
     PlatformMouseButton_Left,
     PlatformMouseButton_Middle,
     PlatformMouseButton_Right,
+    PlatformMouseButton_COUNT,
+};
+
+const char *PlatformMouseButton_Name[] =
+{
+    "PlatformMouseButton_Left",
+    "PlatformMouseButton_Middle",
+    "PlatformMouseButton_Right",
+    "PlatformMouseButton_COUNT",
 };
 
 enum PlatformKeyCode
@@ -156,8 +211,10 @@ struct PlatformEvent
 {
     PlatformEvent *next;
     PlatformEventType type;
+    bool pressed;
     PlatformMouseButton mouse_button;
     PlatformKeyCode key_code;
+    char *text;
 };
 
 struct PlatformOffscreenBuffer
@@ -172,6 +229,11 @@ enum PlatformErrorType
     PlatformError_Nonfatal,
 };
 
+enum PlatformMemFlag
+{
+    PlatformMemFlag_NoLeakCheck = 0x1,
+};
+
 struct Platform
 {
     PlatformEvent *first_event;
@@ -183,11 +245,40 @@ struct Platform
     void (*ReportError)(PlatformErrorType type, char *message, ...);
 
     size_t page_size;
-    void *(*ReserveMemory)(size_t size);
+    void *(*AllocateMemory)(size_t size, uint32_t flags, const char *tag);
+    void *(*ReserveMemory)(size_t size, uint32_t flags, const char *tag);
     void *(*CommitMemory)(void *location, size_t size);
     void (*DecommitMemory)(void *location, size_t size);
-    void (*ReleaseMemory)(void *memory);
+    void (*DeallocateMemory)(void *memory);
 };
+
+static inline PlatformEvent *
+PopEvent(Platform *platform, PlatformEventType target_type = PlatformEvent_Any)
+{
+    PlatformEvent *result = nullptr;
+    for (PlatformEvent **event_at = &platform->first_event;
+         *event_at;
+         )
+    {
+        PlatformEvent *event = *event_at;
+        if (target_type == PlatformEvent_Any ||
+            event->type == target_type)
+        {
+            result = event;
+            *event_at = result->next;
+            if (result == platform->last_event)
+            {
+                Assert(platform->first_event == nullptr);
+                platform->last_event = nullptr;
+            }
+
+            break;
+        }
+
+        event_at = &(*event_at)->next;
+    }
+    return result;
+}
 
 extern Platform *platform;
 extern "C" void App_UpdateAndRender(void);
