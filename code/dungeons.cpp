@@ -81,6 +81,17 @@ App_UpdateAndRender(Platform *platform_)
                         test_text_count -= 1;
                     }
                 }
+                else if (event->key_code == PlatformKeyCode_Delete)
+                {
+                    if (test_text_count > 0)
+                    {
+                        for (int i = test_text_at; i < test_text_count - 1; ++i)
+                        {
+                            test_text[i] = test_text[i + 1];
+                        }
+                        test_text_count -= 1;
+                    }
+                }
                 else if (event->key_code == PlatformKeyCode_Left)
                 {
                     if (test_text_at > 0)
@@ -101,7 +112,7 @@ App_UpdateAndRender(Platform *platform_)
             {
                 for (int i = 0; i < event->text_length; ++i)
                 {
-                    if (test_text_at >= (int)ArrayCount(test_text))
+                    if (test_text_count >= (int)ArrayCount(test_text))
                     {
                         break;
                     }
@@ -110,7 +121,7 @@ App_UpdateAndRender(Platform *platform_)
                         test_text_count += 1;
                         for (int i = test_text_count - 1; i >= test_text_at; --i)
                         {
-                                test_text[i] = test_text[i - 1];
+                            test_text[i] = test_text[i - 1];
                         }
                         test_text[test_text_at++] = event->text[i];
                     }
@@ -118,6 +129,11 @@ App_UpdateAndRender(Platform *platform_)
             } break;
 
             INVALID_DEFAULT_CASE
+        }
+
+        if (test_text_at > test_text_count)
+        {
+            test_text_at = test_text_count;
         }
     }
 
@@ -127,7 +143,7 @@ App_UpdateAndRender(Platform *platform_)
 
     DrawRect(platform->backbuffer, test_font, MakeRect2iMinDim(4, 4, 68, 5),
              MakeColor(255, 255, 255), MakeColor(0, 0, 0));
-    for (int i = 0; i < test_text_count; ++i)
+    for (int i = 0; i < test_text_count + 1; ++i)
     {
         Color foreground = MakeColor(255, 255, 255);
         Color background = MakeColor(0, 0, 0);
@@ -137,7 +153,12 @@ App_UpdateAndRender(Platform *platform_)
             Swap(foreground, background);
         }
 
-        DrawTile(platform->backbuffer, test_font, MakeV2i(6 + i, 6), (Glyph)test_text[i],
-                 foreground, background);
+        Glyph glyph = 0;
+        if (i < test_text_count)
+        {
+            glyph = (Glyph)test_text[i];
+        }
+
+        DrawTile(platform->backbuffer, test_font, MakeV2i(6 + i, 6), glyph, foreground, background);
     }
 }
