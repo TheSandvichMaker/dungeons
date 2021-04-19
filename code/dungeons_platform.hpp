@@ -63,15 +63,25 @@ enum PlatformEventType
     PlatformEvent_COUNT,
 };
 
-static const char *PlatformEventType_Name[] =
+typedef uint32_t PlatformEventFilter;
+enum PlatformEventFilter_ENUM
 {
-    "PlatformEvent_None",
-    "PlatformEvent_MouseUp",
-    "PlatformEvent_MouseDown",
-    "PlatformEvent_KeyUp",
-    "PlatformEvent_KeyDown",
-    "PlatformEvent_COUNT",
+    PlatformEventFilter_MouseUp   = 1 << 0,
+    PlatformEventFilter_MouseDown = 1 << 1,
+    PlatformEventFilter_Mouse     = PlatformEventFilter_MouseUp|PlatformEventFilter_MouseDown,
+    PlatformEventFilter_KeyUp     = 1 << 2,
+    PlatformEventFilter_KeyDown   = 1 << 3,
+    PlatformEventFilter_Key       = PlatformEventFilter_KeyUp|PlatformEventFilter_KeyDown,
+    PlatformEventFilter_Text      = 1 << 4,
+    PlatformEventFilter_ANY       = 0xFFFFFFFF,
 };
+
+static inline bool
+MatchFilter(PlatformEventType type, PlatformEventFilter filter)
+{
+    bool result = !!(filter & (1 << (type - 1)));
+    return result;
+}
 
 enum PlatformMouseButton
 {
@@ -79,14 +89,6 @@ enum PlatformMouseButton
     PlatformMouseButton_Middle,
     PlatformMouseButton_Right,
     PlatformMouseButton_COUNT,
-};
-
-static const char *PlatformMouseButton_Name[] =
-{
-    "PlatformMouseButton_Left",
-    "PlatformMouseButton_Middle",
-    "PlatformMouseButton_Right",
-    "PlatformMouseButton_COUNT",
 };
 
 enum PlatformKeyCode
@@ -272,7 +274,7 @@ struct Platform
 static Platform *platform;
 
 static inline bool
-PopEvent(PlatformEvent **out_event, PlatformEventType target_type = PlatformEvent_Any)
+PopEvent(PlatformEvent **out_event, PlatformEventFilter filter = PlatformEventFilter_ANY)
 {
     bool result = false;
     for (PlatformEvent **event_at = &platform->first_event;
@@ -280,8 +282,7 @@ PopEvent(PlatformEvent **out_event, PlatformEventType target_type = PlatformEven
          )
     {
         PlatformEvent *event = *event_at;
-        if (target_type == PlatformEvent_Any ||
-            event->type == target_type)
+        if (MatchFilter(event->type, filter))
         {
             result = true;
 

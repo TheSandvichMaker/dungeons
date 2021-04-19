@@ -7,5 +7,6 @@
 #include "dungeons_memory.hpp"
 #include "dungeons_math.hpp"
 #include "dungeons_image.hpp"
+#include "dungeons_render.hpp"
 
 #endif /* DUNGEONS_HPP */
