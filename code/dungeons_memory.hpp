@@ -3,15 +3,6 @@
 
 #define DEFAULT_ARENA_CAPACITY Gigabytes(8)
 
-struct Arena
-{
-    size_t capacity;
-    size_t committed;
-    size_t used;
-    char *base;
-    uint32_t temp_count;
-};
-
 static inline size_t
 GetAlignOffset(Arena *arena, size_t Align)
 {
@@ -97,6 +88,11 @@ CheckArena(Arena* arena)
     (Type *)PushSize_(arena, sizeof(Type)*(Count), alignof(Type), false, LOCATION_STRING(#arena))
 #define PushAlignedArrayNoClear(arena, Count, Type, Align) \
     (Type *)PushSize_(arena, sizeof(Type)*(Count), Align, false, LOCATION_STRING(#arena))
+
+#define PushSize(arena, size) \
+    PushSize_(arena, size, 1, true, LOCATION_STRING(#arena))
+#define PushSizeNoClear(arena, size) \
+    PushSize_(arena, size, 1, false, LOCATION_STRING(#arena))
 
 static inline void *
 PushSize_(Arena *arena, size_t Size, size_t Align, bool Clear, const char *Tag)
@@ -196,8 +192,10 @@ CommitTemporaryMemory(TemporaryMemory *Temp)
 struct ScopedMemory
 {
     TemporaryMemory temp;
+    ScopedMemory(Arena *arena) { temp = BeginTemporaryMemory(arena); }
     ScopedMemory(TemporaryMemory temp) : temp(temp) {}
     ~ScopedMemory() { EndTemporaryMemory(temp); }
+    operator TemporaryMemory *() { return &temp; }
 };
 
 #endif /* DUNGEONS_MEMORY_HPP */

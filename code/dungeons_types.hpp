@@ -4,6 +4,15 @@
 #include <stdint.h>
 #include <stddef.h>
 
+struct Arena
+{
+    size_t capacity;
+    size_t committed;
+    size_t used;
+    char *base;
+    uint32_t temp_count;
+};
+
 typedef float V2 __attribute__((ext_vector_type(2)));
 typedef float V3 __attribute__((ext_vector_type(3)));
 typedef float V4 __attribute__((ext_vector_type(4)));
@@ -135,8 +144,24 @@ struct Color
 
 struct Bitmap
 {
-    uint32_t w, h;
+    int32_t w, h, pitch;
     Color *data;
+};
+
+struct Font
+{
+    union
+    {
+        struct
+        {
+            int32_t w, h, pitch;
+            Color *data;
+        };
+        Bitmap bitmap;
+    };
+
+    int32_t glyph_w, glyph_h;
+    uint32_t glyphs_per_row, glyphs_per_col, glyph_count;
 };
 
 #endif /* DUNGEONS_TYPES_HPP */

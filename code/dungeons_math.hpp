@@ -17,6 +17,17 @@
 
 // Constructor functions
 
+DUNGEONS_INLINE Color
+MakeColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255)
+{
+    Color color;
+    color.r = r;
+    color.g = g;
+    color.b = b;
+    color.a = a;
+    return color;
+}
+
 DUNGEONS_INLINE V2 MakeV2(float s) { return (V2) { s, s }; }
 DUNGEONS_INLINE V2 MakeV2(float x, float y) { return (V2) { x, y }; }
 DUNGEONS_INLINE V3 MakeV3(float s) { return (V3) { s, s, s }; }
@@ -31,8 +42,22 @@ DUNGEONS_INLINE V4 MakeV4(V3 xyz, float w) { return (V4) { xyz[0], xyz[1], xyz[2
 DUNGEONS_INLINE V4 MakeV4(float x, V3 yzw) { return (V4) { x, yzw[0], yzw[1], yzw[2] }; }
 DUNGEONS_INLINE V4 MakeV4(float x, float y, float z, float w) { return (V4) { x, y, z, w }; }
 
+DUNGEONS_INLINE V2i MakeV2i(int32_t s) { return (V2i) { s, s }; }
+DUNGEONS_INLINE V2i MakeV2i(int32_t x, int32_t y) { return (V2i) { x, y }; }
+DUNGEONS_INLINE V3i MakeV3i(int32_t s) { return (V3i) { s, s, s }; }
+DUNGEONS_INLINE V3i MakeV3i(V2i xy, int32_t z) { return (V3i) { xy[0], xy[1], z }; }
+DUNGEONS_INLINE V3i MakeV3i(int32_t x, V2i yz) { return (V3i) { x, yz[0], yz[1] }; }
+DUNGEONS_INLINE V3i MakeV3i(int32_t x, int32_t y, int32_t z) { return (V3i) { x, y, z }; }
+DUNGEONS_INLINE V4i MakeV4i(int32_t s) { return (V4i) { s, s, s, s }; }
+DUNGEONS_INLINE V4i MakeV4i(V2i xy, int32_t z, int32_t w) { return (V4i) { xy[0], xy[1], z, w }; }
+DUNGEONS_INLINE V4i MakeV4i(int32_t x, int32_t y, V2i zw) { return (V4i) { x, y, zw[0], zw[1] }; }
+DUNGEONS_INLINE V4i MakeV4i(V2i xy, V2i zw) { return (V4i) { xy[0], xy[1], zw[0], zw[1] }; }
+DUNGEONS_INLINE V4i MakeV4i(V3i xyz, int32_t w) { return (V4i) { xyz[0], xyz[1], xyz[2], w }; }
+DUNGEONS_INLINE V4i MakeV4i(int32_t x, V3i yzw) { return (V4i) { x, yzw[0], yzw[1], yzw[2] }; }
+DUNGEONS_INLINE V4i MakeV4i(int32_t x, int32_t y, int32_t z, int32_t w) { return (V4i) { x, y, z, w }; }
+
 DUNGEONS_INLINE float Square(float x) { return x*x; }
-DUNGEONS_INLINE float Sqrt(float x) { return sqrtf(x); }
+DUNGEONS_INLINE float SquareRoot(float x) { return sqrtf(x); }
 
 DUNGEONS_INLINE float Sin(float x) { return sinf(x); }
 DUNGEONS_INLINE float Cos(float x) { return cosf(x); }
@@ -334,9 +359,9 @@ DUNGEONS_INLINE float Dot(V4 a, V4 b) { return a.x*b.x + a.y*b.y + a.z*b.z + a.w
 DUNGEONS_INLINE float LengthSq(V2 a) { return a.x*a.x + a.y*a.y; }
 DUNGEONS_INLINE float LengthSq(V3 a) { return a.x*a.x + a.y*a.y + a.z*a.z; }
 DUNGEONS_INLINE float LengthSq(V4 a) { return a.x*a.x + a.y*a.y + a.z*a.z + a.w*a.w; }
-DUNGEONS_INLINE float Length(V2 a) { return Sqrt(a.x*a.x + a.y*a.y); }
-DUNGEONS_INLINE float Length(V3 a) { return Sqrt(a.x*a.x + a.y*a.y + a.z*a.z); }
-DUNGEONS_INLINE float Length(V4 a) { return Sqrt(a.x*a.x + a.y*a.y + a.z*a.z + a.w*a.w); }
+DUNGEONS_INLINE float Length(V2 a) { return SquareRoot(a.x*a.x + a.y*a.y); }
+DUNGEONS_INLINE float Length(V3 a) { return SquareRoot(a.x*a.x + a.y*a.y + a.z*a.z); }
+DUNGEONS_INLINE float Length(V4 a) { return SquareRoot(a.x*a.x + a.y*a.y + a.z*a.z + a.w*a.w); }
 
 DUNGEONS_INLINE V2
 Normalize(V2 a)
@@ -438,9 +463,9 @@ Cross(V3 a, V3 b)
 DUNGEONS_INLINE uint32_t LengthSq(V2i a) { return a.x*a.x + a.y*a.y; }
 DUNGEONS_INLINE uint32_t LengthSq(V3i a) { return a.x*a.x + a.y*a.y + a.z*a.z; }
 DUNGEONS_INLINE uint32_t LengthSq(V4i a) { return a.x*a.x + a.y*a.y + a.z*a.z + a.w*a.w; }
-DUNGEONS_INLINE float Length(V2i a) { return Sqrt((float)(a.x*a.x + a.y*a.y)); }
-DUNGEONS_INLINE float Length(V3i a) { return Sqrt((float)(a.x*a.x + a.y*a.y + a.z*a.z)); }
-DUNGEONS_INLINE float Length(V4i a) { return Sqrt((float)(a.x*a.x + a.y*a.y + a.z*a.z + a.w*a.w)); }
+DUNGEONS_INLINE float Length(V2i a) { return SquareRoot((float)(a.x*a.x + a.y*a.y)); }
+DUNGEONS_INLINE float Length(V3i a) { return SquareRoot((float)(a.x*a.x + a.y*a.y + a.z*a.z)); }
+DUNGEONS_INLINE float Length(V4i a) { return SquareRoot((float)(a.x*a.x + a.y*a.y + a.z*a.z + a.w*a.w)); }
 
 DUNGEONS_INLINE int
 Min(int a, int b)
@@ -640,7 +665,7 @@ DiagonalDistance(V3i a, V3i b, float diagonal_cost)
 //
 
 DUNGEONS_INLINE Rect2
-Rect2MinMax(V2 min, V2 max)
+MakeRect2MinMax(V2 min, V2 max)
 {
     Rect2 result;
     result.min = min;
@@ -649,7 +674,7 @@ Rect2MinMax(V2 min, V2 max)
 }
 
 DUNGEONS_INLINE Rect2
-Rect2MinDim(V2 min, V2 dim)
+MakeRect2MinDim(V2 min, V2 dim)
 {
     Rect2 result;
     result.min = min;
@@ -658,7 +683,7 @@ Rect2MinDim(V2 min, V2 dim)
 }
 
 DUNGEONS_INLINE Rect2
-Rect2CenterDim(V2 center, V2 dim)
+MakeRect2CenterDim(V2 center, V2 dim)
 {
     Rect2 result;
     result.min = center - 0.5f*dim;
@@ -667,7 +692,7 @@ Rect2CenterDim(V2 center, V2 dim)
 }
 
 DUNGEONS_INLINE Rect2
-Rect2CenterHalfDim(V2 center, V2 half_dim)
+MakeRect2CenterHalfDim(V2 center, V2 half_dim)
 {
     Rect2 result;
     result.min = center - half_dim;
@@ -737,12 +762,24 @@ Intersect(Rect2 a, Rect2 b)
     return result;
 }
 
+DUNGEONS_INLINE float
+GetWidth(Rect2 a)
+{
+    return a.max.x - a.min.x;
+}
+
+DUNGEONS_INLINE float
+GetHeight(Rect2 a)
+{
+    return a.max.y - a.min.y;
+}
+
 //
 // Rect2i
 //
 
 DUNGEONS_INLINE Rect2i
-Rect2iMinMax(V2i min, V2i max)
+MakeRect2iMinMax(V2i min, V2i max)
 {
     Rect2i result;
     result.min = min;
@@ -751,7 +788,18 @@ Rect2iMinMax(V2i min, V2i max)
 }
 
 DUNGEONS_INLINE Rect2i
-Rect2iMinDim(V2i min, V2i dim)
+MakeRect2iMinDim(int min_x, int min_y, int dim_x, int dim_y)
+{
+    Rect2i result;
+    result.min.x = min_x;
+    result.min.y = min_y;
+    result.max.x = min_x + dim_x;
+    result.max.y = min_y + dim_y;
+    return result;
+}
+
+DUNGEONS_INLINE Rect2i
+MakeRect2iMinDim(V2i min, V2i dim)
 {
     Rect2i result;
     result.min = min;
@@ -760,12 +808,24 @@ Rect2iMinDim(V2i min, V2i dim)
 }
 
 DUNGEONS_INLINE Rect2i
-Rect2iCenterHalfDim(V2i center, V2i half_dim)
+MakeRect2iCenterHalfDim(V2i center, V2i half_dim)
 {
     Rect2i result;
     result.min = center - half_dim;
     result.max = center + half_dim;
     return result;
+}
+
+DUNGEONS_INLINE int32_t
+GetWidth(Rect2i a)
+{
+    return a.max.x - a.min.x;
+}
+
+DUNGEONS_INLINE int32_t
+GetHeight(Rect2i a)
+{
+    return a.max.y - a.min.y;
 }
 
 DUNGEONS_INLINE Rect2i
@@ -813,6 +873,17 @@ Union(Rect2i a, Rect2i b)
 }
 
 DUNGEONS_INLINE Rect2i
+Intersect(Rect2i a, int b_min_x, int b_min_y, int b_max_x, int b_max_y)
+{
+    Rect2i result;
+    result.min.x = Max(a.min.x, b_min_x);
+    result.min.y = Max(a.min.y, b_min_y);
+    result.max.x = Min(a.max.x, b_max_x);
+    result.max.y = Min(a.max.y, b_max_y);
+    return result;
+}
+
+DUNGEONS_INLINE Rect2i
 Intersect(Rect2i a, Rect2i b)
 {
     Rect2i result;
@@ -826,7 +897,7 @@ Intersect(Rect2i a, Rect2i b)
 //
 
 DUNGEONS_INLINE Rect3
-Rect3MinMax(V3 min, V3 max)
+MakeRect3MinMax(V3 min, V3 max)
 {
     Rect3 result;
     result.min = min;
@@ -835,7 +906,7 @@ Rect3MinMax(V3 min, V3 max)
 }
 
 DUNGEONS_INLINE Rect3
-Rect3MinDim(V3 min, V3 dim)
+MakeRect3MinDim(V3 min, V3 dim)
 {
     Rect3 result;
     result.min = min;
@@ -844,7 +915,7 @@ Rect3MinDim(V3 min, V3 dim)
 }
 
 DUNGEONS_INLINE Rect3
-Rect3CenterDim(V3 center, V3 dim)
+MakeRect3CenterDim(V3 center, V3 dim)
 {
     Rect3 result;
     result.min = center - 0.5f*dim;
@@ -853,12 +924,30 @@ Rect3CenterDim(V3 center, V3 dim)
 }
 
 DUNGEONS_INLINE Rect3
-Rect3CenterHalfDim(V3 center, V3 half_dim)
+MakeRect3CenterHalfDim(V3 center, V3 half_dim)
 {
     Rect3 result;
     result.min = center - half_dim;
     result.max = center + half_dim;
     return result;
+}
+
+DUNGEONS_INLINE float
+GetWidth(Rect3 a)
+{
+    return a.max.x - a.min.x;
+}
+
+DUNGEONS_INLINE float
+GetHeight(Rect3 a)
+{
+    return a.max.y - a.min.y;
+}
+
+DUNGEONS_INLINE float
+GetDepth(Rect3 a)
+{
+    return a.max.z - a.min.z;
 }
 
 DUNGEONS_INLINE Rect3
@@ -929,7 +1018,7 @@ Intersect(Rect3 a, Rect3 b)
 //
 
 DUNGEONS_INLINE Rect3i
-Rect3iMinMax(V3i min, V3i max)
+MakeRect3iMinMax(V3i min, V3i max)
 {
     Rect3i result;
     result.min = min;
@@ -938,7 +1027,7 @@ Rect3iMinMax(V3i min, V3i max)
 }
 
 DUNGEONS_INLINE Rect3i
-Rect3iMinDim(V3i min, V3i dim)
+MakeRect3iMinDim(V3i min, V3i dim)
 {
     Rect3i result;
     result.min = min;
@@ -947,12 +1036,30 @@ Rect3iMinDim(V3i min, V3i dim)
 }
 
 DUNGEONS_INLINE Rect3i
-Rect3iCenterHalfDim(V3i center, V3i half_dim)
+MakeRect3iCenterHalfDim(V3i center, V3i half_dim)
 {
     Rect3i result;
     result.min = center - half_dim;
     result.max = center + half_dim;
     return result;
+}
+
+DUNGEONS_INLINE int32_t
+GetWidth(Rect3i a)
+{
+    return a.max.x - a.min.x;
+}
+
+DUNGEONS_INLINE int32_t
+GetHeight(Rect3i a)
+{
+    return a.max.y - a.min.y;
+}
+
+DUNGEONS_INLINE int32_t
+GetDepth(Rect3i a)
+{
+    return a.max.z - a.min.z;
 }
 
 DUNGEONS_INLINE Rect3i

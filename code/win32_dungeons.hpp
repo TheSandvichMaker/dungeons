@@ -20,6 +20,8 @@ struct Win32AllocationHeader
 
 struct Win32State
 {
+    Arena temp_arena;
+
     uint32_t max_platform_events;
     uint32_t next_platform_event;
     bool platform_event_underflow;

@@ -218,13 +218,8 @@ struct PlatformEvent
     bool pressed;
     PlatformMouseButton mouse_button;
     PlatformKeyCode key_code;
+    int text_length;
     char *text;
-};
-
-struct PlatformOffscreenBuffer
-{
-    int32_t w, h;
-    Color *data;
 };
 
 enum PlatformErrorType
@@ -257,7 +252,7 @@ struct Platform
     int32_t mouse_in_window;
 
     int32_t render_w, render_h;
-    PlatformOffscreenBuffer backbuffer;
+    Bitmap backbuffer;
 
     void (*ReportError)(PlatformErrorType type, char *message, ...);
 
@@ -268,14 +263,18 @@ struct Platform
     void (*DecommitMemory)(void *location, size_t size);
     void (*DeallocateMemory)(void *memory);
 
+    Buffer (*ReadFile)(Arena *arena, const char *file);
+
     PlatformHighResTime (*GetTime)(void);
     double (*SecondsElapsed)(PlatformHighResTime start, PlatformHighResTime end);
 };
 
-static inline PlatformEvent *
-PopEvent(Platform *platform, PlatformEventType target_type = PlatformEvent_Any)
+static Platform *platform;
+
+static inline bool
+PopEvent(PlatformEvent **out_event, PlatformEventType target_type = PlatformEvent_Any)
 {
-    PlatformEvent *result = nullptr;
+    bool result = false;
     for (PlatformEvent **event_at = &platform->first_event;
          *event_at;
          )
@@ -284,13 +283,12 @@ PopEvent(Platform *platform, PlatformEventType target_type = PlatformEvent_Any)
         if (target_type == PlatformEvent_Any ||
             event->type == target_type)
         {
-            result = event;
-            *event_at = result->next;
-            if (result == platform->last_event)
-            {
-                Assert(platform->first_event == nullptr);
-                platform->last_event = nullptr;
-            }
+            result = true;
+
+            *out_event = event;
+            *event_at = event->next;
+
+            // TODO: Properly patch up the tail when required
 
             break;
         }
@@ -300,7 +298,6 @@ PopEvent(Platform *platform, PlatformEventType target_type = PlatformEvent_Any)
     return result;
 }
 
-static Platform *platform;
 extern "C" void App_UpdateAndRender(Platform *platform_);
 
 #endif /* DUNGEONS_PLATFORM_HPP */

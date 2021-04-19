@@ -81,66 +81,6 @@ Win32_Deallocate(void *pointer)
     }
 }
 
-static void *temp_buffer;
-static size_t temp_at;
-static size_t temp_committed;
-
-static inline size_t
-GetTempMarker(void)
-{
-    return temp_at;
-}
-
-static inline void
-ResetTemp(size_t to)
-{
-    Assert(to <= temp_at);
-    temp_at = to;
-}
-
-static inline void *
-PushTempMemory(size_t size_init)
-{
-    const size_t buffer_size = Gigabytes(8);
-
-    size_t size = Align16(size_init);
-    Assert((temp_at + size) <= buffer_size);
-
-    if (!temp_buffer)
-    {
-        temp_buffer = Win32_Reserve(buffer_size, PlatformMemFlag_NoLeakCheck, LOCATION_STRING("Win32TempMemory"));
-        Assert(temp_buffer);
-    }
-
-    if (temp_committed < size)
-    {
-        size_t to_commit = AlignPow2(size - temp_committed, platform->page_size);
-        temp_buffer = Win32_Commit((char *)temp_buffer + temp_at, to_commit);
-        Assert(temp_buffer);
-
-        temp_committed += to_commit;
-    }
-
-    void *result = (char *)temp_buffer + temp_at;
-    temp_at += size;
-
-    return result;
-}
-
-struct ScopedTempMemory
-{
-    size_t marker;
-    ScopedTempMemory()
-    {
-        marker = GetTempMarker();
-    }
-
-    ~ScopedTempMemory()
-    {
-        ResetTemp(marker);
-    }
-};
-
 static inline wchar_t *
 FormatLastError(void)
 {
@@ -182,12 +122,12 @@ ExitWithError(const wchar_t *message, int exit_code = -1)
 }
 
 static inline wchar_t *
-Win32_TempUtf8ToUtf16(char *utf8)
+Win32_Utf8ToUtf16(Arena *arena, const char *utf8)
 {
     wchar_t *result = nullptr;
 
     int wchar_count = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
-    result = (wchar_t *)PushTempMemory(sizeof(wchar_t)*wchar_count);
+    result = PushArrayNoClear(arena, wchar_count, wchar_t);
 
     if (result)
     {
@@ -201,12 +141,12 @@ Win32_TempUtf8ToUtf16(char *utf8)
 }
 
 static inline char *
-Win32_TempUtf16ToUtf8(wchar_t *utf16)
+Win32_Utf16ToUtf8(Arena *arena, const wchar_t *utf16, int *out_length = nullptr)
 {
     char *result = nullptr;
 
     int char_count = WideCharToMultiByte(CP_UTF8, 0, utf16, -1, nullptr, 0, nullptr, nullptr);
-    result = (char *)PushTempMemory(char_count);
+    result = PushArrayNoClear(arena, char_count, char);
 
     if (result)
     {
@@ -214,13 +154,19 @@ Win32_TempUtf16ToUtf8(wchar_t *utf16)
         {
             DisplayLastError();
         }
+
+        if (out_length) *out_length = char_count - 1;
+    }
+    else
+    {
+        if (out_length) *out_length = 0;
     }
 
     return result;
 }
 
 static inline char *
-FormatTempStringV(char *fmt, va_list args_init)
+FormatStringV(Arena *arena, char *fmt, va_list args_init)
 {
     va_list args_size;
     va_copy(args_size, args_init);
@@ -231,9 +177,7 @@ FormatTempStringV(char *fmt, va_list args_init)
     int chars_required = vsnprintf(nullptr, 0, fmt, args_size) + 1;
     va_end(args_size);
 
-    size_t temp_marker = GetTempMarker();
-
-    char *result = (char *)PushTempMemory(chars_required);
+    char *result = PushArrayNoClear(arena, chars_required, char);
     vsnprintf(result, chars_required, fmt, args_fmt);
     va_end(args_fmt);
 
@@ -241,11 +185,11 @@ FormatTempStringV(char *fmt, va_list args_init)
 }
 
 static inline char *
-FormatTempString(char *fmt, ...)
+FormatString(Arena *arena, char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    char *result = FormatTempStringV(fmt, args);
+    char *result = FormatStringV(arena, fmt, args);
     va_end(args);
     return result;
 }
@@ -253,16 +197,14 @@ FormatTempString(char *fmt, ...)
 static inline void
 DebugPrint(char *fmt, ...)
 {
-    ScopedTempMemory temp;
-    // size_t temp_marker = GetTempMarker();
-    // defer { ResetTemp(temp_marker); };
+    ScopedMemory temp(&g_win32_state.temp_arena);
 
     va_list args;
     va_start(args, fmt);
-    char *formatted = FormatTempStringV(fmt, args);
+    char *formatted = FormatStringV(&g_win32_state.temp_arena, fmt, args);
     va_end(args);
 
-    wchar_t *fmt_wide = Win32_TempUtf8ToUtf16(formatted);
+    wchar_t *fmt_wide = Win32_Utf8ToUtf16(&g_win32_state.temp_arena, formatted);
 
     OutputDebugStringW(fmt_wide);
 }
@@ -270,14 +212,14 @@ DebugPrint(char *fmt, ...)
 static inline void
 Win32_ReportError(PlatformErrorType type, char *error, ...)
 {
-    ScopedTempMemory temp;
+    ScopedMemory temp(&g_win32_state.temp_arena);
 
     va_list args;
     va_start(args, error);
-    char *formatted_error = FormatTempStringV(error, args);
+    char *formatted_error = FormatStringV(&g_win32_state.temp_arena, error, args);
     va_end(args);
 
-    wchar_t *error_wide = Win32_TempUtf8ToUtf16(formatted_error);
+    wchar_t *error_wide = Win32_Utf8ToUtf16(&g_win32_state.temp_arena, formatted_error);
     if (error_wide)
     {
         MessageBoxW(0, error_wide, L"Error", MB_OK);
@@ -285,8 +227,61 @@ Win32_ReportError(PlatformErrorType type, char *error, ...)
 
     if (type == PlatformError_Fatal)
     {
+#if DUNGEONS_INTERNAL
+        __debugbreak();
+#else
         ExitProcess(-1);
+#endif
     }
+}
+
+static Buffer
+Win32_ReadFile(Arena *arena, const char *file)
+{
+    Buffer result = {};
+
+    Win32State *state = &g_win32_state;
+
+    ScopedMemory temp_memory(&state->temp_arena);
+    wchar_t *file_wide = Win32_Utf8ToUtf16(&state->temp_arena, file);
+
+    HANDLE handle = CreateFileW(file_wide, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    if (handle != INVALID_HANDLE_VALUE)
+    {
+        DWORD file_size_high;
+        DWORD file_size_low = GetFileSize(handle, &file_size_high);
+        // NOTE: Right now we're just doing 32 bit file IO.
+        if (!file_size_high) {
+            ScopedMemory temp_memory(arena);
+
+            result.data = PushArrayNoClear(arena, file_size_low + 1, uint8_t);
+
+            DWORD bytes_read;
+            if (ReadFile(handle, result.data, file_size_low, &bytes_read, 0))
+            {
+                if (bytes_read == file_size_low)
+                {
+                    result.size = file_size_low;
+                    result.data[file_size_low] = 0; // null terminate, just for convenience.
+                    CommitTemporaryMemory(temp_memory);
+                }
+                else
+                {
+                    DebugPrint("Did not read expected number of bytes from file '%s'", file);
+                }
+            }
+            else
+            {
+                DebugPrint("Could not read file '%s'", file);
+            }
+        }
+    }
+    else
+    {
+        DebugPrint("Could not open file '%s'", file);
+    }
+
+    return result;
 }
 
 static inline void
@@ -315,14 +310,14 @@ Win32_ToggleFullscreen(HWND window)
 }
 
 static inline void
-ResizeOffscreenBuffer(PlatformOffscreenBuffer *buffer, int32_t w, int32_t h)
+ResizeOffscreenBuffer(Bitmap *buffer, int32_t w, int32_t h)
 {
     if (buffer->data &&
         w != buffer->w &&
         h != buffer->h)
     {
         Win32_Deallocate(buffer->data);
-        buffer->data = nullptr;
+        ZeroStruct(buffer);
     }
 
     if (!buffer->data &&
@@ -332,11 +327,12 @@ ResizeOffscreenBuffer(PlatformOffscreenBuffer *buffer, int32_t w, int32_t h)
         buffer->data = (Color *)Win32_Allocate(Align16(sizeof(Color)*w*h), 0, LOCATION_STRING("Win32OffscreenBuffer"));
         buffer->w = w;
         buffer->h = h;
+        buffer->pitch = w;
     }
 }
 
 static inline void
-DisplayOffscreenBuffer(HWND window, PlatformOffscreenBuffer *buffer)
+DisplayOffscreenBuffer(HWND window, Bitmap *buffer)
 {
     HDC dc = GetDC(window);
 
@@ -546,6 +542,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     platform->DeallocateMemory = Win32_Deallocate;
     platform->GetTime = Win32_GetTime;
     platform->SecondsElapsed = Win32_SecondsElapsed;
+    platform->ReadFile = Win32_ReadFile;
 
     state->max_platform_events = MAX_PLATFORM_EVENTS;
     state->next_platform_event = 0;
@@ -577,8 +574,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     g_running = true;
     while (g_running)
     {
-        ResetTemp(0);
-
         bool exit_requested = false;
         platform->first_event = platform->last_event = nullptr;
 
@@ -648,7 +643,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
                     PlatformEvent *event = PushEvent();
                     wchar_t buf[] = { (wchar_t)message.wParam, 0 };
                     event->type = PlatformEvent_Text;
-                    event->text = Win32_TempUtf16ToUtf8(buf);
+                    event->text = Win32_Utf16ToUtf8(&state->temp_arena, buf, &event->text_length);
                 } break;
 
                 default:
@@ -656,35 +651,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
                     TranslateMessage(&message);
                     DispatchMessageW(&message);
                 } break;
-            }
-        }
-
-        for (PlatformEvent *event = nullptr; (event = PopEvent(platform));)
-        {
-            switch (event->type)
-            {
-                case PlatformEvent_MouseUp:
-                case PlatformEvent_MouseDown:
-                {
-                    DebugPrint("Mouse Button %s was %s.\r\n",
-                               PlatformMouseButton_Name[event->mouse_button],
-                               event->pressed ? "pressed" : "released");
-                } break;
-
-                case PlatformEvent_KeyUp:
-                case PlatformEvent_KeyDown:
-                {
-                    DebugPrint("Key 0x%X was %s.\r\n",
-                               event->key_code,
-                               event->pressed ? "pressed" : "released");
-                } break;
-
-                case PlatformEvent_Text:
-                {
-                    DebugPrint("%s", event->text);
-                } break;
-
-                default: break;
             }
         }
 
@@ -716,7 +682,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
                               platform->render_w,
                               platform->render_h);
 
-        PlatformOffscreenBuffer *buffer = &platform->backbuffer;
+        Bitmap *buffer = &platform->backbuffer;
 
         App_UpdateAndRender(platform);
         DisplayOffscreenBuffer(window, buffer);
