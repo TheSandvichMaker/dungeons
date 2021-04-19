@@ -5,7 +5,9 @@
     ((x) ? 1 \
          : (platform->ReportError(PlatformError_Fatal, \
                                   "Assertion Failed: " #x " at file %s, line %d", __FILE__, __LINE__), 0))
-     
+
+// should this be inline or static inline
+#define DUNGEONS_INLINE inline
 
 #ifdef DEBUG_BUILD
 #define AssertSlow(x) Assert(x)
@@ -21,6 +23,8 @@
 #define INVALID_CODE_PATH Assert(!"Invalid Code Path!");
 #define INVALID_DEFAULT_CASE default: { Assert(!"Invalid Default Case!"); } break;
 #define INCOMPLETE_SWITCH default: { /* nah */ } break;
+
+#define Swap(a, b) do { auto swap_temp_ = a; a = b; b = swap_temp_; } while(0)
 
 #define Paste__(a, b) a##b
 #define Paste_(a, b) Paste__(a, b)
@@ -59,7 +63,7 @@ enum PlatformEventType
     PlatformEvent_COUNT,
 };
 
-const char *PlatformEventType_Name[] =
+static const char *PlatformEventType_Name[] =
 {
     "PlatformEvent_None",
     "PlatformEvent_MouseUp",
@@ -77,7 +81,7 @@ enum PlatformMouseButton
     PlatformMouseButton_COUNT,
 };
 
-const char *PlatformMouseButton_Name[] =
+static const char *PlatformMouseButton_Name[] =
 {
     "PlatformMouseButton_Left",
     "PlatformMouseButton_Middle",
@@ -234,10 +238,23 @@ enum PlatformMemFlag
     PlatformMemFlag_NoLeakCheck = 0x1,
 };
 
+struct PlatformHighResTime
+{
+    uint64_t opaque;
+};
+
 struct Platform
 {
+    bool exit_requested;
+
+    float dt;
+
     PlatformEvent *first_event;
     PlatformEvent *last_event;
+
+    int32_t mouse_x, mouse_y, mouse_y_flipped;
+    int32_t mouse_dx, mouse_dy;
+    int32_t mouse_in_window;
 
     int32_t render_w, render_h;
     PlatformOffscreenBuffer backbuffer;
@@ -250,6 +267,9 @@ struct Platform
     void *(*CommitMemory)(void *location, size_t size);
     void (*DecommitMemory)(void *location, size_t size);
     void (*DeallocateMemory)(void *memory);
+
+    PlatformHighResTime (*GetTime)(void);
+    double (*SecondsElapsed)(PlatformHighResTime start, PlatformHighResTime end);
 };
 
 static inline PlatformEvent *
@@ -280,7 +300,7 @@ PopEvent(Platform *platform, PlatformEventType target_type = PlatformEvent_Any)
     return result;
 }
 
-extern Platform *platform;
-extern "C" void App_UpdateAndRender(void);
+static Platform *platform;
+extern "C" void App_UpdateAndRender(Platform *platform_);
 
 #endif /* DUNGEONS_PLATFORM_HPP */

@@ -11,7 +11,6 @@ static WINDOWPLACEMENT g_window_position = { sizeof(g_window_position) };
 static Win32State g_win32_state;
 
 static Platform platform_;
-Platform *platform = &platform_;
 
 extern "C"
 {
@@ -255,6 +254,8 @@ static inline void
 DebugPrint(char *fmt, ...)
 {
     ScopedTempMemory temp;
+    // size_t temp_marker = GetTempMarker();
+    // defer { ResetTemp(temp_marker); };
 
     va_list args;
     va_start(args, fmt);
@@ -321,32 +322,17 @@ ResizeOffscreenBuffer(PlatformOffscreenBuffer *buffer, int32_t w, int32_t h)
         h != buffer->h)
     {
         Win32_Deallocate(buffer->data);
+        buffer->data = nullptr;
     }
 
     if (!buffer->data &&
         w > 0 &&
         h > 0)
     {
-        buffer->data = (Color *)Win32_Allocate(sizeof(Color)*w*h, 0, LOCATION_STRING("Win32OffscreenBuffer"));
+        buffer->data = (Color *)Win32_Allocate(Align16(sizeof(Color)*w*h), 0, LOCATION_STRING("Win32OffscreenBuffer"));
         buffer->w = w;
         buffer->h = h;
     }
-}
-
-static inline void
-DrawTestPattern(PlatformOffscreenBuffer *buffer)
-{
-    static int frame_counter = 0;
-    for (int y = 0; y < buffer->h; ++y)
-    for (int x = 0; x < buffer->w; ++x)
-    {
-        Color *pixel = &buffer->data[y*buffer->w + x];
-        pixel->r = (x + frame_counter) & 255;
-        pixel->g = (y + frame_counter) & 255;
-        pixel->b = 0;
-        pixel->a = 255;
-    }
-    ++frame_counter;
 }
 
 static inline void
@@ -405,7 +391,7 @@ Win32_WindowProc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
 
             ResizeOffscreenBuffer(&platform->backbuffer, platform->render_w, platform->render_h);
 
-            DrawTestPattern(&platform->backbuffer);
+            App_UpdateAndRender(platform);
             DisplayOffscreenBuffer(window, &platform->backbuffer);
 
             EndPaint(window, &paint);
@@ -433,7 +419,6 @@ Win32_CreateWindow(HINSTANCE instance, int x, int y, int w, int h, const wchar_t
     int window_w = window_rect.right - window_rect.left;
     int window_h = window_rect.bottom - window_rect.top;
 
-    HCURSOR ArrowCursor = LoadCursorW(nullptr, IDC_ARROW);
     WNDCLASSW window_class = {};
     window_class.style = CS_OWNDC|CS_HREDRAW|CS_VREDRAW;
     window_class.lpfnWndProc = Win32_WindowProc;
@@ -486,11 +471,67 @@ PushEvent()
     return result;
 }
 
+static bool
+Win32_HandleSpecialKeys(HWND window, int vk_code, bool pressed, bool alt_is_down)
+{
+    bool processed = false;
+
+    if (!pressed)
+    {
+        if (alt_is_down)
+        {
+            processed = true;
+            switch (vk_code)
+            {
+                case VK_RETURN:
+                {
+                    Win32_ToggleFullscreen(window);
+                } break;
+
+                case VK_F4:
+                {
+                    g_running = false;
+                } break;
+
+                default:
+                {
+                    processed = false;
+                } break;
+            }
+        }
+    }
+
+    return processed;
+}
+
+static PlatformHighResTime
+Win32_GetTime(void)
+{
+    LARGE_INTEGER time;
+    QueryPerformanceCounter(&time);
+
+    PlatformHighResTime result;
+    result.opaque = (uint64_t &)time.QuadPart;
+
+    return result;
+}
+
+static double
+Win32_SecondsElapsed(PlatformHighResTime start, PlatformHighResTime end)
+{
+    double result = (double)(end.opaque - start.opaque) / (double)g_perf_freq.QuadPart;
+    return result;
+}
+
 int
 WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_cmd)
 {
+    platform = &platform_;
+
     SYSTEM_INFO system_info;
     GetSystemInfo(&system_info);
+
+    QueryPerformanceFrequency(&g_perf_freq);
 
     Win32State *state = &g_win32_state;
     state->allocation_sentinel.next = &state->allocation_sentinel;
@@ -503,12 +544,17 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     platform->CommitMemory = Win32_Commit;
     platform->DecommitMemory = Win32_Decommit;
     platform->DeallocateMemory = Win32_Deallocate;
+    platform->GetTime = Win32_GetTime;
+    platform->SecondsElapsed = Win32_SecondsElapsed;
 
     state->max_platform_events = MAX_PLATFORM_EVENTS;
     state->next_platform_event = 0;
     state->platform_event_underflow = false;
-    state->platform_event_buffer = (PlatformEvent *)Win32_Allocate(sizeof(PlatformEvent)*state->max_platform_events, PlatformMemFlag_NoLeakCheck, LOCATION_STRING("Win32Events"));
+    state->platform_event_buffer = (PlatformEvent *)Win32_Allocate(sizeof(PlatformEvent)*state->max_platform_events,
+                                                                   PlatformMemFlag_NoLeakCheck,
+                                                                   LOCATION_STRING("Win32Events"));
 
+    HCURSOR arrow_cursor = LoadCursorW(nullptr, IDC_ARROW);
     HWND window = Win32_CreateWindow(instance, 32, 32, 1280, 720, L"Dungeons");
     if (!window)
     {
@@ -522,6 +568,11 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     {
         DisplayLastError();
     }
+
+    double smooth_frametime = 1.0f / 60.0f;
+    PlatformHighResTime frame_start_time = Win32_GetTime();
+
+    platform->dt = 1.0f / 60.0f;
 
     g_running = true;
     while (g_running)
@@ -552,22 +603,15 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
                     bool released = (message.lParam & (1 << 30)) != 0;
                     bool alt_is_down = (message.lParam & (1 << 29)) != 0;
 
-                    if (pressed && alt_is_down && (vk_code == VK_RETURN))
+                    if (!Win32_HandleSpecialKeys(window, vk_code, pressed, alt_is_down))
                     {
-                        Win32_ToggleFullscreen(window);
+                        PlatformEvent *event = PushEvent();
+                        event->type = (pressed ? PlatformEvent_KeyDown : PlatformEvent_KeyUp);
+                        event->pressed = pressed;
+                        event->key_code = (PlatformKeyCode)vk_code;
+
+                        TranslateMessage(&message);
                     }
-
-                    if (released && alt_is_down && (vk_code == VK_F4))
-                    {
-                        exit_requested = true;
-                    }
-
-                    PlatformEvent *event = PushEvent();
-                    event->type = (pressed ? PlatformEvent_KeyDown : PlatformEvent_KeyUp);
-                    event->pressed = pressed;
-                    event->key_code = (PlatformKeyCode)vk_code;
-
-                    TranslateMessage(&message);
                 } break;
 
                 case WM_LBUTTONDOWN:
@@ -647,20 +691,49 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
         RECT client_rect;
         GetClientRect(window, &client_rect);
 
-        platform->render_w = client_rect.right;
-        platform->render_h = client_rect.bottom;
+        int32_t client_w = client_rect.right;
+        int32_t client_h = client_rect.bottom;
+
+        platform->render_w = client_w;
+        platform->render_h = client_h;
+
+        POINT cursor_pos;
+        GetCursorPos(&cursor_pos);
+        ScreenToClient(window, &cursor_pos);
+
+        platform->mouse_x = cursor_pos.x;
+        platform->mouse_y = client_h - cursor_pos.y - 1;
+        platform->mouse_y_flipped = cursor_pos.y;
+        platform->mouse_in_window = (platform->mouse_x >= 0 && platform->mouse_x < client_w &&
+                                     platform->mouse_y >= 0 && platform->mouse_y < client_h);
+
+        if (platform->mouse_in_window)
+        {
+            SetCursor(arrow_cursor);
+        }
 
         ResizeOffscreenBuffer(&platform->backbuffer,
                               platform->render_w,
                               platform->render_h);
 
         PlatformOffscreenBuffer *buffer = &platform->backbuffer;
-        DrawTestPattern(buffer);
+
+        App_UpdateAndRender(platform);
         DisplayOffscreenBuffer(window, buffer);
 
         if (composition_enabled)
         {
             DwmFlush();
+        }
+
+        PlatformHighResTime frame_end_time = Win32_GetTime();
+        double seconds_elapsed = Win32_SecondsElapsed(frame_start_time, frame_end_time);
+        Swap(frame_start_time, frame_end_time);
+
+        platform->dt = (float)seconds_elapsed;
+        if (platform->dt > 1.0f / 15.0f)
+        {
+            platform->dt = 1.0f / 15.0f;
         }
 
         if (exit_requested)

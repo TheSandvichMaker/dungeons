@@ -3,14 +3,14 @@
 
 #define DEFAULT_ARENA_CAPACITY Gigabytes(8)
 
-typedef struct Arena
+struct Arena
 {
     size_t capacity;
     size_t committed;
     size_t used;
     char *base;
     uint32_t temp_count;
-} Arena;
+};
 
 static inline size_t
 GetAlignOffset(Arena *arena, size_t Align)
@@ -40,7 +40,7 @@ GetSizeRemaining(Arena *arena, size_t Align)
 }
 
 static inline void
-ClearArena(Arena *arena)
+Clear(Arena *arena)
 {
     Assert(arena->temp_count == 0);
     arena->used = 0;
@@ -48,7 +48,7 @@ ClearArena(Arena *arena)
 }
 
 static inline void
-DeallocateArena(Arena *arena)
+Release(Arena *arena)
 {
     Assert(arena->temp_count == 0);
     platform->DeallocateMemory(arena->base);
@@ -56,14 +56,14 @@ DeallocateArena(Arena *arena)
 }
 
 static inline void
-ResetArenaTo(Arena *arena, char *Target)
+ResetTo(Arena *arena, char *Target)
 {
     Assert((Target >= arena->base) && (Target <= (arena->base + arena->used)));
     arena->used = (Target - arena->base);
 }
 
 static inline void
-InitArenaWithMemory(Arena *arena, size_t MemorySize, void *Memory)
+InitWithMemory(Arena *arena, size_t MemorySize, void *Memory)
 {
     ZeroStruct(arena);
     arena->capacity = MemorySize;
@@ -152,11 +152,11 @@ BootstrapPushStruct_(size_t Size, size_t Align, size_t arenaOffset, const char *
     return State;
 }
 
-typedef struct TemporaryMemory
+struct TemporaryMemory
 {
     Arena *arena;
     size_t used;
-} TemporaryMemory;
+};
 
 static inline TemporaryMemory
 BeginTemporaryMemory(Arena *arena)
@@ -193,9 +193,11 @@ CommitTemporaryMemory(TemporaryMemory *Temp)
     }
 }
 
-#define ScopedMemory(Temparena)                                         \
-    for (TemporaryMemory ScopeMemory = BeginTemporaryMemory(Temparena); \
-         ScopeMemory.arena;                                             \
-         EndTemporaryMemory(ScopeMemory), ScopeMemory.arena = NULL)
+struct ScopedMemory
+{
+    TemporaryMemory temp;
+    ScopedMemory(TemporaryMemory temp) : temp(temp) {}
+    ~ScopedMemory() { EndTemporaryMemory(temp); }
+};
 
 #endif /* DUNGEONS_MEMORY_HPP */

@@ -1,6 +1,22 @@
 #ifndef DUNGEONS_SHARED_HPP
 #define DUNGEONS_SHARED_HPP
 
+template <typename T>
+struct DeferDoodad
+{
+    T lambda;
+    DeferDoodad(T lambda) : lambda(lambda) {}
+    ~DeferDoodad() { lambda(); }
+};
+
+struct DeferDoodadHelp
+{
+    template <typename T>
+    DeferDoodad<T> operator + (T t) { return t; }
+};
+
+#define defer const auto Paste(defer_, __LINE__) = DeferDoodadHelp() + [&]()
+
 #define ArrayCount(x) (sizeof(x) / sizeof((x)[0]))
 
 static inline void
