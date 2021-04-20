@@ -1,14 +1,10 @@
 #include "win32_dungeons.hpp"
 
-#include <stdio.h>
-
-#define MAX_PLATFORM_EVENTS 4096
-
 static bool g_running;
 static LARGE_INTEGER g_perf_freq;
 static WINDOWPLACEMENT g_window_position = { sizeof(g_window_position) };
 
-static Win32State g_win32_state;
+static Win32State win32_state;
 
 static Platform platform_;
 
@@ -21,8 +17,6 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 static void *
 Win32_Reserve(size_t size, uint32_t flags, const char *tag)
 {
-    Win32State *state = &g_win32_state;
-
     size_t page_size = platform->page_size;
     size_t total_size = page_size + size;
 
@@ -34,8 +28,8 @@ Win32_Reserve(size_t size, uint32_t flags, const char *tag)
     header->flags = flags;
     header->tag = tag;
 
-    header->next = &state->allocation_sentinel;
-    header->prev = state->allocation_sentinel.prev;
+    header->next = &win32_state.allocation_sentinel;
+    header->prev = win32_state.allocation_sentinel.prev;
     header->next->prev = header;
     header->prev->next = header;
 
@@ -82,7 +76,7 @@ Win32_Deallocate(void *pointer)
 }
 
 static inline wchar_t *
-FormatLastError(void)
+Win32_FormatLastError(void)
 {
     wchar_t *message = NULL;
     DWORD error = GetLastError() & 0xFFFF;
@@ -100,41 +94,38 @@ FormatLastError(void)
 }
 
 static inline void
-DisplayLastError(void)
+Win32_DisplayLastError(void)
 {
-    wchar_t *message = FormatLastError();
+    wchar_t *message = Win32_FormatLastError();
     MessageBoxW(0, message, L"Error", MB_OK);
     LocalFree(message);
 }
 
 static inline void
-ExitWithLastError(int exit_code = -1)
+Win32_ExitWithLastError(int exit_code = -1)
 {
-    DisplayLastError();
-    ExitProcess(exit_code);
-}
-
-static inline void
-ExitWithError(const wchar_t *message, int exit_code = -1)
-{
-    MessageBoxW(0, message, L"Fatal Error", MB_OK);
+    Win32_DisplayLastError();
     ExitProcess(exit_code);
 }
 
 static inline wchar_t *
-Win32_Utf8ToUtf16(Arena *arena, const char *utf8)
+Win32_Utf8ToUtf16(Arena *arena, const char *utf8, int length = -1)
 {
     wchar_t *result = nullptr;
 
-    int wchar_count = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
-    result = PushArrayNoClear(arena, wchar_count, wchar_t);
+    int wchar_count = MultiByteToWideChar(CP_UTF8, 0, utf8, length, nullptr, 0);
+    int null_terminated_count = (length == -1 ? wchar_count : wchar_count + 1);
+
+    result = PushArrayNoClear(arena, null_terminated_count, wchar_t);
 
     if (result)
     {
-        if (!MultiByteToWideChar(CP_UTF8, 0, utf8, -1, result, wchar_count))
+        if (!MultiByteToWideChar(CP_UTF8, 0, utf8, length, result, wchar_count))
         {
-            DisplayLastError();
+            Win32_DisplayLastError();
         }
+
+        result[null_terminated_count - 1] = 0;
     }
 
     return result;
@@ -152,7 +143,7 @@ Win32_Utf16ToUtf8(Arena *arena, const wchar_t *utf16, int *out_length = nullptr)
     {
         if (!WideCharToMultiByte(CP_UTF8, 0, utf16, -1, result, char_count, nullptr, nullptr))
         {
-            DisplayLastError();
+            Win32_DisplayLastError();
         }
 
         if (out_length) *out_length = char_count - 1;
@@ -162,6 +153,35 @@ Win32_Utf16ToUtf8(Arena *arena, const wchar_t *utf16, int *out_length = nullptr)
         if (out_length) *out_length = 0;
     }
 
+    return result;
+}
+
+static inline wchar_t *
+FormatWStringV(Arena *arena, wchar_t *fmt, va_list args_init)
+{
+    va_list args_size;
+    va_copy(args_size, args_init);
+
+    va_list args_fmt;
+    va_copy(args_fmt, args_init);
+
+    int chars_required = _vsnwprintf(nullptr, 0, fmt, args_size) + 1;
+    va_end(args_size);
+
+    wchar_t *result = PushArrayNoClear(arena, chars_required, wchar_t);
+    _vsnwprintf(result, chars_required, fmt, args_fmt);
+    va_end(args_fmt);
+
+    return result;
+}
+
+static inline wchar_t *
+FormatWString(Arena *arena, wchar_t *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    wchar_t *result = FormatWStringV(arena, fmt, args);
+    va_end(args);
     return result;
 }
 
@@ -195,16 +215,16 @@ FormatString(Arena *arena, char *fmt, ...)
 }
 
 static inline void
-DebugPrint(char *fmt, ...)
+Win32_DebugPrint(char *fmt, ...)
 {
-    ScopedMemory temp(&g_win32_state.temp_arena);
+    ScopedMemory temp(&win32_state.temp_arena);
 
     va_list args;
     va_start(args, fmt);
-    char *formatted = FormatStringV(&g_win32_state.temp_arena, fmt, args);
+    char *formatted = FormatStringV(&win32_state.temp_arena, fmt, args);
     va_end(args);
 
-    wchar_t *fmt_wide = Win32_Utf8ToUtf16(&g_win32_state.temp_arena, formatted);
+    wchar_t *fmt_wide = Win32_Utf8ToUtf16(&win32_state.temp_arena, formatted);
 
     OutputDebugStringW(fmt_wide);
 }
@@ -212,14 +232,14 @@ DebugPrint(char *fmt, ...)
 static inline void
 Win32_ReportError(PlatformErrorType type, char *error, ...)
 {
-    ScopedMemory temp(&g_win32_state.temp_arena);
+    ScopedMemory temp(&win32_state.temp_arena);
 
     va_list args;
     va_start(args, error);
-    char *formatted_error = FormatStringV(&g_win32_state.temp_arena, error, args);
+    char *formatted_error = FormatStringV(&win32_state.temp_arena, error, args);
     va_end(args);
 
-    wchar_t *error_wide = Win32_Utf8ToUtf16(&g_win32_state.temp_arena, formatted_error);
+    wchar_t *error_wide = Win32_Utf8ToUtf16(&win32_state.temp_arena, formatted_error);
     if (error_wide)
     {
         MessageBoxW(0, error_wide, L"Error", MB_OK);
@@ -236,14 +256,12 @@ Win32_ReportError(PlatformErrorType type, char *error, ...)
 }
 
 static Buffer
-Win32_ReadFile(Arena *arena, const char *file)
+Win32_ReadFile(Arena *arena, String filename)
 {
     Buffer result = {};
 
-    Win32State *state = &g_win32_state;
-
-    ScopedMemory temp_memory(&state->temp_arena);
-    wchar_t *file_wide = Win32_Utf8ToUtf16(&state->temp_arena, file);
+    ScopedMemory temp_memory(&win32_state.temp_arena);
+    wchar_t *file_wide = Win32_Utf8ToUtf16(&win32_state.temp_arena, (char *)filename.data, (int)filename.size);
 
     HANDLE handle = CreateFileW(file_wide, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
     if (handle != INVALID_HANDLE_VALUE)
@@ -267,18 +285,18 @@ Win32_ReadFile(Arena *arena, const char *file)
                 }
                 else
                 {
-                    DebugPrint("Did not read expected number of bytes from file '%s'", file);
+                    Win32_DebugPrint("Did not read expected number of bytes from file '%s'", filename);
                 }
             }
             else
             {
-                DebugPrint("Could not read file '%s'", file);
+                Win32_DebugPrint("Could not read file '%s'", filename);
             }
         }
     }
     else
     {
-        DebugPrint("Could not open file '%s'", file);
+        Win32_DebugPrint("Could not open file '%s'", filename);
     }
 
     return result;
@@ -290,27 +308,31 @@ Win32_ToggleFullscreen(HWND window)
     // Raymond Chen's fullscreen toggle recipe:
     // http://blogs.msdn.com/b/oldnewthing/archive/2010/04/12/9994016.aspx
     DWORD style = GetWindowLong(window, GWL_STYLE);
-    if (style & WS_OVERLAPPEDWINDOW) {
+    if (style & WS_OVERLAPPEDWINDOW)
+    {
         MONITORINFO mi = { sizeof(mi) };
         if (GetWindowPlacement(window, &g_window_position) &&
-            GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &mi)) {
+            GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &mi))
+        {
             SetWindowLong(window, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
             SetWindowPos(window, HWND_TOP,
-                mi.rcMonitor.left, mi.rcMonitor.top,
-                mi.rcMonitor.right - mi.rcMonitor.left,
-                mi.rcMonitor.bottom - mi.rcMonitor.top,
-                SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+                         mi.rcMonitor.left, mi.rcMonitor.top,
+                         mi.rcMonitor.right - mi.rcMonitor.left,
+                         mi.rcMonitor.bottom - mi.rcMonitor.top,
+                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
         }
-    } else {
+    }
+    else
+    {
         SetWindowLong(window, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
         SetWindowPlacement(window, &g_window_position);
         SetWindowPos(window, NULL, 0, 0, 0, 0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
     }
 }
 
 static inline void
-ResizeOffscreenBuffer(Bitmap *buffer, int32_t w, int32_t h)
+Win32_ResizeOffscreenBuffer(Bitmap *buffer, int32_t w, int32_t h)
 {
     if (buffer->data &&
         w != buffer->w &&
@@ -332,7 +354,7 @@ ResizeOffscreenBuffer(Bitmap *buffer, int32_t w, int32_t h)
 }
 
 static inline void
-DisplayOffscreenBuffer(HWND window, Bitmap *buffer)
+Win32_DisplayOffscreenBuffer(HWND window, Bitmap *buffer)
 {
     HDC dc = GetDC(window);
 
@@ -385,10 +407,10 @@ Win32_WindowProc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
             platform->render_w = client_rect.right;
             platform->render_h = client_rect.bottom;
 
-            ResizeOffscreenBuffer(&platform->backbuffer, platform->render_w, platform->render_h);
+            Win32_ResizeOffscreenBuffer(&platform->backbuffer, platform->render_w, platform->render_h);
 
-            App_UpdateAndRender(platform);
-            DisplayOffscreenBuffer(window, &platform->backbuffer);
+            // App_UpdateAndRender(platform);
+            Win32_DisplayOffscreenBuffer(window, &platform->backbuffer);
 
             EndPaint(window, &paint);
         } break;
@@ -424,7 +446,7 @@ Win32_CreateWindow(HINSTANCE instance, int x, int y, int w, int h, const wchar_t
 
     if (!RegisterClassW(&window_class))
     {
-        ExitWithLastError();
+        Win32_ExitWithLastError();
     }
 
     HWND window_handle = CreateWindowW(window_class.lpszClassName,
@@ -436,7 +458,7 @@ Win32_CreateWindow(HINSTANCE instance, int x, int y, int w, int h, const wchar_t
 
     if (!window_handle)
     {
-        ExitWithLastError();
+        Win32_ExitWithLastError();
     }
 
     return window_handle;
@@ -445,25 +467,15 @@ Win32_CreateWindow(HINSTANCE instance, int x, int y, int w, int h, const wchar_t
 static inline PlatformEvent *
 PushEvent()
 {
-    Win32State *state = &g_win32_state;
-    PlatformEvent *result = &state->dummy_platform_event;
-    if (state->next_platform_event < state->max_platform_events)
+    PlatformEvent *result = PushStruct(&win32_state.temp_arena, PlatformEvent);
+    if (platform->first_event)
     {
-        result = &state->platform_event_buffer[state->next_platform_event++];
-        if (platform->first_event)
-        {
-            platform->last_event = platform->last_event->next = result;
-        }
-        else
-        {
-            platform->first_event = platform->last_event = result;
-        }
+        platform->last_event = platform->last_event->next = result;
     }
     else
     {
-        state->platform_event_underflow = true;
+        platform->first_event = platform->last_event = result;
     }
-    ZeroStruct(result);
     return result;
 }
 
@@ -519,6 +531,132 @@ Win32_SecondsElapsed(PlatformHighResTime start, PlatformHighResTime end)
     return result;
 }
 
+static wchar_t *
+FindExeFolderLikeAMonkeyInAMonkeySuit(void)
+{
+    DWORD exe_path_count = 0;
+    wchar_t *exe_path = nullptr;
+    size_t exe_buffer_count = MAX_PATH;
+    for (;;)
+    {
+        ScopedMemory temp(&win32_state.arena);
+        exe_path = PushArrayNoClear(&win32_state.arena, exe_buffer_count, wchar_t);
+
+        SetLastError(0);
+        exe_path_count = GetModuleFileNameW(0, exe_path, exe_buffer_count);
+
+        if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+        {
+            CommitTemporaryMemory(temp);
+            break;
+        }
+
+        exe_buffer_count *= 2;
+    }
+
+    wchar_t *last_backslash = exe_path;
+    for (wchar_t *c = exe_path; *c; ++c)
+    {
+        if (*c == L'\\')
+        {
+            last_backslash = c;
+        }
+    }
+
+    *last_backslash = 0;
+
+    return exe_path;
+}
+
+static inline bool
+Win32_FileExists(wchar_t *path)
+{
+    bool result = false;
+
+    WIN32_FILE_ATTRIBUTE_DATA gibberish;
+    if (GetFileAttributesExW(path, GetFileExInfoStandard, &gibberish))
+    {
+        result = true;
+    }
+
+    return result;
+}
+
+static inline uint64_t
+Win32_GetLastWriteTime(wchar_t *path)
+{
+    FILETIME last_write_time = {};
+
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (GetFileAttributesExW(path, GetFileExInfoStandard, &data))
+    {
+        last_write_time = data.ftLastWriteTime;
+    }
+
+     ULARGE_INTEGER thanks;
+     thanks.LowPart  = last_write_time.dwLowDateTime;
+     thanks.HighPart = last_write_time.dwLowDateTime;
+
+    return thanks.QuadPart;
+}
+
+static int dll_generation;
+static bool
+Win32_LoadAppCode(Win32AppCode *old_code)
+{
+    bool result = false;
+
+    ScopedMemory temp(&win32_state.arena);
+    wchar_t *exe_folder         = win32_state.exe_folder;
+    wchar_t *dll_path           = win32_state.dll_path;
+    wchar_t *lock_file_path     = FormatWString(&win32_state.arena, L"\\\\?\\%s\\dungeons_lock.temp", exe_folder);
+    wchar_t *prev_temp_dll_path = FormatWString(&win32_state.arena, L"\\\\?\\%s\\temp_dungeons_%d.dll", exe_folder, dll_generation);
+    wchar_t *temp_dll_path      = FormatWString(&win32_state.arena, L"\\\\?\\%s\\temp_dungeons_%d.dll", exe_folder, dll_generation + 1);
+
+    Win32AppCode new_code = {};
+
+    Win32_DebugPrint("Trying to load game code...\n");
+
+    if (!Win32_FileExists(lock_file_path))
+    {
+        DeleteFileW(prev_temp_dll_path);
+        CopyFile(dll_path, temp_dll_path, false);
+
+        dll_generation += 1;
+
+        new_code.dll = LoadLibraryW(temp_dll_path);
+        if (new_code.dll)
+        {
+            new_code.last_write_time = Win32_GetLastWriteTime(dll_path);
+            new_code.UpdateAndRender = (AppUpdateAndRenderType *)GetProcAddress(new_code.dll, "App_UpdateAndRender");
+
+            new_code.valid = true;
+            if (!new_code.UpdateAndRender)
+            {
+                new_code.valid = false;
+                platform->ReportError(PlatformError_Fatal, "Could not load App_UpdateAndRender from app dll");
+            }
+
+            if (new_code.valid)
+            {
+                Win32_DebugPrint("I darn right did it...\n");
+                result = true;
+                *old_code = new_code;
+            }
+        }
+        else
+        {
+            platform->ReportError(PlatformError_Fatal, "Could not load app code (dungeons.dll)");
+        }
+    }
+    else
+    {
+        Win32_DebugPrint("What is this tootin' lock file doing in my way\n");
+    }
+
+    return result;
+}
+
 int
 WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_cmd)
 {
@@ -529,9 +667,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
 
     QueryPerformanceFrequency(&g_perf_freq);
 
-    Win32State *state = &g_win32_state;
-    state->allocation_sentinel.next = &state->allocation_sentinel;
-    state->allocation_sentinel.prev = &state->allocation_sentinel;
+    win32_state.allocation_sentinel.next = &win32_state.allocation_sentinel;
+    win32_state.allocation_sentinel.prev = &win32_state.allocation_sentinel;
 
     platform->page_size = system_info.dwPageSize;
     platform->ReportError = Win32_ReportError;
@@ -544,18 +681,17 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     platform->SecondsElapsed = Win32_SecondsElapsed;
     platform->ReadFile = Win32_ReadFile;
 
-    state->max_platform_events = MAX_PLATFORM_EVENTS;
-    state->next_platform_event = 0;
-    state->platform_event_underflow = false;
-    state->platform_event_buffer = (PlatformEvent *)Win32_Allocate(sizeof(PlatformEvent)*state->max_platform_events,
-                                                                   PlatformMemFlag_NoLeakCheck,
-                                                                   LOCATION_STRING("Win32Events"));
+    win32_state.exe_folder = FindExeFolderLikeAMonkeyInAMonkeySuit();
+    win32_state.dll_path   = FormatWString(&win32_state.arena, L"\\\\?\\%s\\dungeons.dll", win32_state.exe_folder);
+
+    Win32AppCode app_code;
+    Win32_LoadAppCode(&app_code);
 
     HCURSOR arrow_cursor = LoadCursorW(nullptr, IDC_ARROW);
     HWND window = Win32_CreateWindow(instance, 32, 32, 1280, 720, L"Dungeons");
     if (!window)
     {
-        ExitWithError(L"Could not create window");
+        platform->ReportError(PlatformError_Fatal, "Could not create window");
     }
 
     ShowWindow(window, show_cmd);
@@ -563,10 +699,10 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     BOOL composition_enabled;
     if (DwmIsCompositionEnabled(&composition_enabled) != S_OK)
     {
-        DisplayLastError();
+        Win32_DisplayLastError();
     }
 
-    double smooth_frametime = 1.0f / 60.0f;
+    // double smooth_frametime = 1.0f / 60.0f;
     PlatformHighResTime frame_start_time = Win32_GetTime();
 
     platform->dt = 1.0f / 60.0f;
@@ -574,6 +710,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     g_running = true;
     while (g_running)
     {
+        Clear(&win32_state.temp_arena);
+
         bool exit_requested = false;
         platform->first_event = platform->last_event = nullptr;
 
@@ -595,14 +733,18 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
                 {
 					int vk_code = (int)message.wParam;
 					bool pressed = (message.lParam & (1ull << 31)) == 0;
-                    bool released = (message.lParam & (1 << 30)) != 0;
-                    bool alt_is_down = (message.lParam & (1 << 29)) != 0;
+                    bool alt_down = (message.lParam & (1 << 29)) != 0;
+                    bool ctrl_down = !!(GetKeyState(VK_CONTROL) & 0xFF00);
+                    bool shift_down = !!(GetKeyState(VK_SHIFT) & 0xFF00);
 
-                    if (!Win32_HandleSpecialKeys(window, vk_code, pressed, alt_is_down))
+                    if (!Win32_HandleSpecialKeys(window, vk_code, pressed, alt_down))
                     {
                         PlatformEvent *event = PushEvent();
                         event->type = (pressed ? PlatformEvent_KeyDown : PlatformEvent_KeyUp);
                         event->pressed = pressed;
+                        event->alt_down = alt_down;
+                        event->ctrl_down = ctrl_down;
+                        event->shift_down = shift_down;
                         event->key_code = (PlatformKeyCode)vk_code;
 
                         TranslateMessage(&message);
@@ -643,7 +785,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
                     PlatformEvent *event = PushEvent();
                     wchar_t buf[] = { (wchar_t)message.wParam, 0 };
                     event->type = PlatformEvent_Text;
-                    event->text = Win32_Utf16ToUtf8(&state->temp_arena, buf, &event->text_length);
+                    event->text = Win32_Utf16ToUtf8(&win32_state.temp_arena, buf, &event->text_length);
                 } break;
 
                 default:
@@ -678,14 +820,17 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
             SetCursor(arrow_cursor);
         }
 
-        ResizeOffscreenBuffer(&platform->backbuffer,
-                              platform->render_w,
-                              platform->render_h);
+        Win32_ResizeOffscreenBuffer(&platform->backbuffer,
+                                    platform->render_w,
+                                    platform->render_h);
 
         Bitmap *buffer = &platform->backbuffer;
 
-        App_UpdateAndRender(platform);
-        DisplayOffscreenBuffer(window, buffer);
+        if (app_code.valid)
+        {
+            app_code.UpdateAndRender(platform);
+        }
+        Win32_DisplayOffscreenBuffer(window, buffer);
 
         if (composition_enabled)
         {
@@ -702,23 +847,37 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
             platform->dt = 1.0f / 15.0f;
         }
 
+        uint64_t last_write_time = Win32_GetLastWriteTime(win32_state.dll_path);
+        if (app_code.last_write_time != last_write_time)
+        {
+            for (int attempt = 0; attempt < 100; ++attempt)
+            {
+                if (Win32_LoadAppCode(&app_code))
+                {
+                    break;
+                }
+
+                Sleep(100);
+            }
+        }
+
         if (exit_requested)
         {
             g_running = false;
         }
     }
 
-    ResizeOffscreenBuffer(&platform->backbuffer, 0, 0);
+    Win32_ResizeOffscreenBuffer(&platform->backbuffer, 0, 0);
 
     bool leaked_memory = false;
-    for (Win32AllocationHeader *header = state->allocation_sentinel.next;
-         header != &state->allocation_sentinel;
+    for (Win32AllocationHeader *header = win32_state.allocation_sentinel.next;
+         header != &win32_state.allocation_sentinel;
          header = header->next)
     {
-        DebugPrint("Allocated Block, Size: %llu, Tag: %s, NoLeakCheck: %s\n",
-                   header->size,
-                   header->tag,
-                   (header->flags & PlatformMemFlag_NoLeakCheck ? "true" : "false"));
+        Win32_DebugPrint("Allocated Block, Size: %llu, Tag: %s, NoLeakCheck: %s\n",
+                         header->size,
+                         header->tag,
+                         (header->flags & PlatformMemFlag_NoLeakCheck ? "true" : "false"));
         if (!(header->flags & PlatformMemFlag_NoLeakCheck))
         {
             leaked_memory = true;

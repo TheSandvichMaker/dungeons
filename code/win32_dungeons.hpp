@@ -1,6 +1,8 @@
 #ifndef WIN32_DUNGEONS_HPP
 #define WIN32_DUNGEONS_HPP
 
+#include <stdio.h>
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <dwmapi.h>
@@ -18,15 +20,23 @@ struct Win32AllocationHeader
     const char *tag;
 };
 
+struct Win32AppCode
+{
+    bool valid;
+
+    HMODULE dll;
+    uint64_t last_write_time;
+
+    AppUpdateAndRenderType *UpdateAndRender;
+};
+
 struct Win32State
 {
+    Arena arena;
     Arena temp_arena;
 
-    uint32_t max_platform_events;
-    uint32_t next_platform_event;
-    bool platform_event_underflow;
-    PlatformEvent dummy_platform_event;
-    PlatformEvent *platform_event_buffer;
+    wchar_t *exe_folder;
+    wchar_t *dll_path;
 
     Win32AllocationHeader allocation_sentinel;
 };

@@ -148,6 +148,28 @@ BootstrapPushStruct_(size_t Size, size_t Align, size_t arenaOffset, const char *
     return State;
 }
 
+static inline char *
+PushNullTerminatedString(Arena *arena, size_t size, char *data)
+{
+    char *result = PushArrayNoClear(arena, size + 1, char);
+
+    CopyArray(size, data, result);
+    result[size] = 0;
+
+    return result;
+}
+
+static inline char *
+PushNullTerminatedString(Arena *arena, String string)
+{
+    char *result = PushArrayNoClear(arena, string.size + 1, char);
+
+    CopyArray(string.size, string.data, result);
+    result[string.size] = 0;
+
+    return result;
+}
+
 struct TemporaryMemory
 {
     Arena *arena;

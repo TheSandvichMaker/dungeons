@@ -3,6 +3,8 @@
 #include "dungeons_image.cpp"
 #include "dungeons_render.cpp"
 
+// Ryan's text controls example: https://hatebin.com/ovcwtpsfmj
+
 static inline Bitmap
 PushBitmap(Arena *arena, int w, int h)
 {
@@ -11,6 +13,15 @@ PushBitmap(Arena *arena, int w, int h)
     result.h = h;
     result.pitch = w;
     result.data = PushArray(arena, w*h, Color);
+    return result;
+}
+
+static inline StringContainer
+PushEmptyStringContainer(Arena *arena, size_t capacity)
+{
+    StringContainer result = {};
+    result.capacity = capacity;
+    result.data = PushArray(arena, capacity, uint8_t);
     return result;
 }
 
@@ -38,127 +49,53 @@ MakeFont(Bitmap bitmap, int32_t glyph_w, int32_t glyph_h)
     return font;
 }
 
-static Arena test_arena;
-static Bitmap test_bitmap;
-static Font test_font;
-static bool initialized;
+static Font
+LoadFontFromDisk(Arena *arena, String filename, int glyph_w, int glyph_h)
+{
+    Font result = {};
 
-static int test_text_count;
-static int test_text_at;
-static char test_text[64];
+    Buffer file = platform->ReadFile(arena, filename);
+    if (!file.size)
+    {
+        platform->ReportError(PlatformError_Nonfatal,
+                              "Could not open file '%.*s' while loading font.", StringExpand(filename));
+        return result;
+    }
 
-extern "C" void
+    Bitmap bitmap = ParseBitmap(file);
+    if (!bitmap.data)
+    {
+        platform->ReportError(PlatformError_Nonfatal,
+                              "Failed to parse bitmap '%.*s' while loading font.", StringExpand(filename));
+        return result;
+    }
+
+    result = MakeFont(bitmap, glyph_w, glyph_h);
+    return result;
+}
+
+void
 App_UpdateAndRender(Platform *platform_)
 {
     platform = platform_;
 
-    if (!initialized)
+    if (!platform->app_initialized)
     {
-        Buffer test_file = platform->ReadFile(&test_arena, "font8x12.bmp");
-        Assert(test_file.size);
+        GameState *game_state = BootstrapPushStruct(GameState, permanent_arena);
 
-        test_bitmap = ParseBitmap(test_file);
-        test_font = MakeFont(test_bitmap, 8, 12);
+        game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font16x16.bmp"), 16, 16);
+        game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font8x16.bmp"), 8, 16);
+        InitializeRenderState(&game_state->render_state, &platform->backbuffer, &game_state->world_font, &game_state->ui_font);
 
-        initialized = true;
+        platform->persistent_app_data = game_state;
+        platform->app_initialized = true;
     }
 
-    for (PlatformEvent *event; PopEvent(&event, PlatformEventFilter_KeyDown|PlatformEventFilter_Text);)
-    {
-        switch (event->type)
-        {
-            case PlatformEvent_KeyDown:
-            {
-                if (event->key_code == PlatformKeyCode_Back)
-                {
-                    if (test_text_at > 0)
-                    {
-                        test_text_at -= 1;
-                        for (int i = test_text_at; i < test_text_count - 1; ++i)
-                        {
-                            test_text[i] = test_text[i + 1];
-                        }
-                        test_text_count -= 1;
-                    }
-                }
-                else if (event->key_code == PlatformKeyCode_Delete)
-                {
-                    if (test_text_count > 0)
-                    {
-                        for (int i = test_text_at; i < test_text_count - 1; ++i)
-                        {
-                            test_text[i] = test_text[i + 1];
-                        }
-                        test_text_count -= 1;
-                    }
-                }
-                else if (event->key_code == PlatformKeyCode_Left)
-                {
-                    if (test_text_at > 0)
-                    {
-                        test_text_at -= 1;
-                    }
-                }
-                else if (event->key_code == PlatformKeyCode_Right)
-                {
-                    if (test_text_at < test_text_count)
-                    {
-                        test_text_at += 1;
-                    }
-                }
-            } break;
-
-            case PlatformEvent_Text:
-            {
-                for (int i = 0; i < event->text_length; ++i)
-                {
-                    if (test_text_count >= (int)ArrayCount(test_text))
-                    {
-                        break;
-                    }
-                    if (event->text[i] >= 32 && event->text[i] < 127)
-                    {
-                        test_text_count += 1;
-                        for (int i = test_text_count - 1; i >= test_text_at; --i)
-                        {
-                            test_text[i] = test_text[i - 1];
-                        }
-                        test_text[test_text_at++] = event->text[i];
-                    }
-                }
-            } break;
-
-            INVALID_DEFAULT_CASE
-        }
-
-        if (test_text_at > test_text_count)
-        {
-            test_text_at = test_text_count;
-        }
-    }
+    GameState *game_state = (GameState *)platform->persistent_app_data;
+    RenderState *render_state = &game_state->render_state;
 
     V2i mouse_p = MakeV2i(platform->mouse_x, platform->mouse_y);
 
-    ClearBitmap(platform->backbuffer, MakeColor(0, 0, 0));
-
-    DrawRect(platform->backbuffer, test_font, MakeRect2iMinDim(4, 4, 68, 5),
-             MakeColor(255, 255, 255), MakeColor(0, 0, 0));
-    for (int i = 0; i < test_text_count + 1; ++i)
-    {
-        Color foreground = MakeColor(255, 255, 255);
-        Color background = MakeColor(0, 0, 0);
-
-        if (i == test_text_at)
-        {
-            Swap(foreground, background);
-        }
-
-        Glyph glyph = 0;
-        if (i < test_text_count)
-        {
-            glyph = (Glyph)test_text[i];
-        }
-
-        DrawTile(platform->backbuffer, test_font, MakeV2i(6 + i, 6), glyph, foreground, background);
-    }
+    ClearBitmap(&platform->backbuffer, MakeColor(0, 255, 0));
+    DrawRect(render_state, Draw_World, MakeRect2iMinDim(4, 4, 68, 5), MakeColor(255, 255, 255), MakeColor(0, 0, 0));
 }

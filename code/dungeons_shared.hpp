@@ -33,7 +33,7 @@ ZeroSize(size_t size_init, void *data_init)
 #define ZeroStruct(Struct) ZeroSize(sizeof(*(Struct)), Struct)
 #define ZeroArray(Count, Data) ZeroSize(sizeof(*(Data))*(Count), Data)
 
-static bool
+static inline bool
 MemoryIsEqual(size_t Count, void *AInit, void *BInit)
 {
     char *A = (char *)AInit;
@@ -53,8 +53,8 @@ MemoryIsEqual(size_t Count, void *AInit, void *BInit)
 
 #define StructsAreEqual(A, B) (Assert(sizeof(*(A)) == sizeof(*(B))), MemoryIsEqual(sizeof(*(A)), A, B))
 
-static void
-CopySize(size_t Size, void *Source, void *Dest)
+static inline void
+CopySize(size_t Size, const void *Source, void *Dest)
 {
 #ifdef _MSVC_VER
     __movsb(Dest, Source, Size);

@@ -1,8 +1,27 @@
 static inline void
-ClearBitmap(const Bitmap &bitmap, Color clear_color)
+InitializeRenderState(RenderState *state, Bitmap *target, Font *world_font, Font *ui_font)
 {
-    Color *at = bitmap.data;
-    for (int i = 0; i < bitmap.pitch*bitmap.h; ++i)
+    state->target     = target;
+    state->world_font = world_font;
+    state->ui_font    = ui_font;
+    if (((world_font->glyph_w % ui_font->glyph_w) != 0) ||
+        ((world_font->glyph_h % ui_font->glyph_h) != 0))
+    {
+        platform->ReportError(PlatformError_Nonfatal, "Bad font metrics! The UI font does not evenly fit into the World font (world: %dx%d versus ui: %dx%d)", world_font->glyph_w, world_font->glyph_h, ui_font->glyph_w, ui_font->glyph_h);
+    }
+
+    if ((world_font->glyph_w < ui_font->glyph_w) ||
+        (world_font->glyph_h < ui_font->glyph_h))
+    {
+        platform->ReportError(PlatformError_Nonfatal, "Bad font metrics! The UI font is bigger than the World font (world: %dx%d versus ui: %dx%d)", world_font->glyph_w, world_font->glyph_h, ui_font->glyph_w, ui_font->glyph_h);
+    }
+}
+
+static inline void
+ClearBitmap(Bitmap *bitmap, Color clear_color)
+{
+    Color *at = bitmap->data;
+    for (int i = 0; i < bitmap->pitch*bitmap->h; ++i)
     {
         *at++ = clear_color;
     }
@@ -20,19 +39,19 @@ BlitRect(Bitmap *bitmap, Rect2i rect, Color color)
 }
 
 static inline void
-BlitBitmap(const Bitmap &dest, const Bitmap &source, V2i p)
+BlitBitmap(Bitmap *dest, Bitmap *source, V2i p)
 {
     int source_min_x = Max(0, -p.x);
     int source_min_y = Max(0, -p.y);
-    int source_max_x = Min(source.w, dest.w - p.x);
-    int source_max_y = Min(source.h, dest.h - p.y);
+    int source_max_x = Min(source->w, dest->w - p.x);
+    int source_max_y = Min(source->h, dest->h - p.y);
     int source_adjusted_w = source_max_x - source_min_x;
     int source_adjusted_h = source_max_y - source_min_y;
 
-    p = Clamp(p, MakeV2i(0, 0), MakeV2i(dest.w, dest.h));
+    p = Clamp(p, MakeV2i(0, 0), MakeV2i(dest->w, dest->h));
 
-    Color *source_row = source.data + source_min_y*source.pitch + source_min_x;
-    Color *dest_row = dest.data + p.y*dest.pitch + p.x;
+    Color *source_row = source->data + source_min_y*source->pitch + source_min_x;
+    Color *dest_row = dest->data + p.y*dest->pitch + p.x;
     for (int y = 0; y < source_adjusted_h; ++y)
     {
         Color *source_pixel = source_row;
@@ -41,33 +60,33 @@ BlitBitmap(const Bitmap &dest, const Bitmap &source, V2i p)
         {
             *dest_pixel++ = *source_pixel++;
         }
-        source_row += source.pitch;
-        dest_row += dest.pitch;
+        source_row += source->pitch;
+        dest_row += dest->pitch;
     }
 }
 
 static inline void
-BlitBitmapMask(const Bitmap &dest, const Bitmap &source, V2i p, Color foreground, Color background)
+BlitBitmapMask(Bitmap *dest, Bitmap *source, V2i p, Color foreground, Color background)
 {
     int source_min_x = Max(0, -p.x);
     int source_min_y = Max(0, -p.y);
-    int source_max_x = Min(source.w, dest.w - p.x);
-    int source_max_y = Min(source.h, dest.h - p.y);
+    int source_max_x = Min(source->w, dest->w - p.x);
+    int source_max_y = Min(source->h, dest->h - p.y);
     int source_adjusted_w = source_max_x - source_min_x;
     int source_adjusted_h = source_max_y - source_min_y;
 
-    p = Clamp(p, MakeV2i(0, 0), MakeV2i(dest.w, dest.h));
+    p = Clamp(p, MakeV2i(0, 0), MakeV2i(dest->w, dest->h));
 
-    Color *source_row = source.data + source_min_y*source.pitch + source_min_x;
-    Color *dest_row = dest.data + p.y*dest.pitch + p.x;
+    Color *source_row = source->data + source_min_y*source->pitch + source_min_x;
+    Color *dest_row = dest->data + p.y*dest->pitch + p.x;
     for (int y = 0; y < source_adjusted_h; ++y)
     {
         Color *source_pixel = source_row;
         Color *dest_pixel = dest_row;
         for (int x = 0; x < source_adjusted_w; ++x)
         {
-            Color source = *source_pixel++;
-            if (source.a)
+            Color color = *source_pixel++;
+            if (color.a)
             {
                 *dest_pixel = foreground;
             }
@@ -77,13 +96,13 @@ BlitBitmapMask(const Bitmap &dest, const Bitmap &source, V2i p, Color foreground
             }
             ++dest_pixel;
         }
-        source_row += source.pitch;
-        dest_row += dest.pitch;
+        source_row += source->pitch;
+        dest_row += dest->pitch;
     }
 }
 
 static inline Bitmap
-MakeBitmapView(Bitmap source, Rect2i rect)
+MakeBitmapView(const Bitmap &source, Rect2i rect)
 {
     rect = Intersect(rect, 0, 0, source.w, source.h);
 
@@ -96,29 +115,58 @@ MakeBitmapView(Bitmap source, Rect2i rect)
 }
 
 static inline void
-BlitCharMask(const Bitmap &dest, const Font &font, V2i p, Glyph glyph, Color foreground, Color background)
+BlitCharMask(Bitmap *dest, Font *font, V2i p, Glyph glyph, Color foreground, Color background)
 {
-    if (glyph < font.glyph_count)
+    if (glyph < font->glyph_count)
     {
-        uint32_t glyph_x = font.glyph_w*(glyph % font.glyphs_per_row);
-        uint32_t glyph_y = font.glyph_h*(font.glyphs_per_col - (glyph / font.glyphs_per_row) - 1);
+        uint32_t glyph_x = font->glyph_w*(glyph % font->glyphs_per_row);
+        uint32_t glyph_y = font->glyph_h*(font->glyphs_per_col - (glyph / font->glyphs_per_row) - 1);
 
-        Bitmap glyph_bitmap = MakeBitmapView(font.bitmap,
-                                             MakeRect2iMinDim(glyph_x, glyph_y, font.glyph_w, font.glyph_h));
+        Bitmap glyph_bitmap = MakeBitmapView(font->bitmap,
+                                             MakeRect2iMinDim(glyph_x, glyph_y, font->glyph_w, font->glyph_h));
 
-        BlitBitmapMask(dest, glyph_bitmap, p, foreground, background);
+        BlitBitmapMask(dest, &glyph_bitmap, p, foreground, background);
+    }
+}
+
+static inline V2i
+TileToScreen(RenderState *state, DrawMode mode, V2i p)
+{
+    if (mode == Draw_World)
+    {
+        p -= state->camera_bottom_left;
+        p *= MakeV2i(state->world_font->glyph_w, state->world_font->glyph_h);
+    }
+    else
+    {
+        Assert(mode == Draw_Ui);
+        p *= MakeV2i(state->ui_font->glyph_w, state->ui_font->glyph_h);
+    }
+    return p;
+}
+
+static inline Font *
+GetFont(RenderState *state, DrawMode mode)
+{
+    if (mode == Draw_World)
+    {
+        return state->world_font;
+    }
+    else
+    {
+        return state->ui_font;
     }
 }
 
 static inline void
-DrawTile(const Bitmap &dest, const Font &font, V2i tile_p, Glyph glyph, Color foreground, Color background)
+DrawTile(RenderState *state, DrawMode mode, V2i tile_p, Glyph glyph, Color foreground, Color background)
 {
-    V2i screen_p = MakeV2i(font.glyph_w, font.glyph_h)*tile_p;
-    BlitCharMask(dest, font, screen_p, glyph, foreground, background);
+    V2i screen_p = TileToScreen(state, mode, tile_p);
+    BlitCharMask(state->target, GetFont(state, mode), screen_p, glyph, foreground, background);
 }
 
 static inline 
-void DrawRect(const Bitmap &dest, const Font &font, const Rect2i &rect, Color foreground, Color background)
+void DrawRect(RenderState *state, DrawMode mode, const Rect2i &rect, Color foreground, Color background)
 {
     uint32_t left   = Wall_Left;
     uint32_t right  = Wall_Right;
@@ -135,20 +183,20 @@ void DrawRect(const Bitmap &dest, const Font &font, const Rect2i &rect, Color fo
     }
 #endif
 
-    DrawTile(dest, font, rect.min, MakeWall(right|top), foreground, background);
-    DrawTile(dest, font, MakeV2i(rect.max.x - 1, rect.min.y), MakeWall(left|top), foreground, background);
-    DrawTile(dest, font, rect.max - MakeV2i(1, 1), MakeWall(left|bottom), foreground, background);
-    DrawTile(dest, font, MakeV2i(rect.min.x, rect.max.y - 1), MakeWall(right|bottom), foreground, background);
+    DrawTile(state, mode, rect.min, MakeWall(right|top), foreground, background);
+    DrawTile(state, mode, MakeV2i(rect.max.x - 1, rect.min.y), MakeWall(left|top), foreground, background);
+    DrawTile(state, mode, rect.max - MakeV2i(1, 1), MakeWall(left|bottom), foreground, background);
+    DrawTile(state, mode, MakeV2i(rect.min.x, rect.max.y - 1), MakeWall(right|bottom), foreground, background);
 
     for (int32_t x = rect.min.x + 1; x < rect.max.x - 1; ++x)
     {
-        DrawTile(dest, font, MakeV2i(x, rect.min.y), MakeWall(left|right), foreground, background);
-        DrawTile(dest, font, MakeV2i(x, rect.max.y - 1), MakeWall(left|right), foreground, background);
+        DrawTile(state, mode, MakeV2i(x, rect.min.y), MakeWall(left|right), foreground, background);
+        DrawTile(state, mode, MakeV2i(x, rect.max.y - 1), MakeWall(left|right), foreground, background);
     }
 
     for (int32_t y = rect.min.y + 1; y < rect.max.y - 1; ++y)
     {
-        DrawTile(dest, font, MakeV2i(rect.min.x, y), MakeWall(top|bottom), foreground, background);
-        DrawTile(dest, font, MakeV2i(rect.max.x - 1, y), MakeWall(top|bottom), foreground, background);
+        DrawTile(state, mode, MakeV2i(rect.min.x, y), MakeWall(top|bottom), foreground, background);
+        DrawTile(state, mode, MakeV2i(rect.max.x - 1, y), MakeWall(top|bottom), foreground, background);
     }
 }

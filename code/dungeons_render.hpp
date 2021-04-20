@@ -162,4 +162,19 @@ MakeWall(uint32_t wall_flags)
     return result;
 }
 
+enum DrawMode
+{
+    Draw_World,
+    Draw_Ui,
+};
+
+struct RenderState
+{
+    Bitmap *target;
+    Font *world_font;
+    Font *ui_font;
+
+    V2i camera_bottom_left;
+};
+
 #endif /* DUNGEONS_RENDER_HPP */

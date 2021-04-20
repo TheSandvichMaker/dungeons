@@ -1,6 +1,12 @@
 #ifndef DUNGEONS_PLATFORM_HPP
 #define DUNGEONS_PLATFORM_HPP
 
+#if DUNGEONS_BUILD_DLL
+#define DUNGEONS_EXPORT __declspec(dllexport)
+#else
+#define DUNGEONS_EXPORT
+#endif
+
 #define Assert(x) \
     ((x) ? 1 \
          : (platform->ReportError(PlatformError_Fatal, \
@@ -215,13 +221,17 @@ enum PlatformKeyCode
 
 struct PlatformEvent
 {
-    PlatformEvent *next;
     PlatformEventType type;
     bool pressed;
+    bool alt_down;
+    bool ctrl_down;
+    bool shift_down;
     PlatformMouseButton mouse_button;
     PlatformKeyCode key_code;
     int text_length;
     char *text;
+
+    PlatformEvent *next;
 };
 
 enum PlatformErrorType
@@ -244,10 +254,14 @@ struct Platform
 {
     bool exit_requested;
 
+    bool app_initialized;
+    void *persistent_app_data;
+
     float dt;
 
     PlatformEvent *first_event;
     PlatformEvent *last_event;
+    PlatformEvent **last_event_next;
 
     int32_t mouse_x, mouse_y, mouse_y_flipped;
     int32_t mouse_dx, mouse_dy;
@@ -265,7 +279,7 @@ struct Platform
     void (*DecommitMemory)(void *location, size_t size);
     void (*DeallocateMemory)(void *memory);
 
-    Buffer (*ReadFile)(Arena *arena, const char *file);
+    Buffer (*ReadFile)(Arena *arena, String filename);
 
     PlatformHighResTime (*GetTime)(void);
     double (*SecondsElapsed)(PlatformHighResTime start, PlatformHighResTime end);
@@ -274,31 +288,39 @@ struct Platform
 static Platform *platform;
 
 static inline bool
-PopEvent(PlatformEvent **out_event, PlatformEventFilter filter = PlatformEventFilter_ANY)
+PopEvent(PlatformEvent *out_event, PlatformEventFilter filter = PlatformEventFilter_ANY)
 {
+    // NOTE: As an iterator, this does a linear search from the head every time, so it's not very efficient,
+    // but it has the benefit of requiring no iterator setup at all, and is still definitely fast enough.
     bool result = false;
-    for (PlatformEvent **event_at = &platform->first_event;
-         *event_at;
-         )
+
+    PlatformEvent **prev_at  = &platform->first_event;
+    PlatformEvent **event_at = &platform->first_event;
+    while (*event_at)
     {
         PlatformEvent *event = *event_at;
         if (MatchFilter(event->type, filter))
         {
             result = true;
+            *out_event = *event;
 
-            *out_event = event;
             *event_at = event->next;
-
-            // TODO: Properly patch up the tail when required
+            if (!event->next)
+            {
+                platform->last_event = *prev_at;
+            }
 
             break;
         }
-
-        event_at = &(*event_at)->next;
+        prev_at  = event_at;
+        event_at = &event->next;
     }
+
     return result;
 }
 
-extern "C" void App_UpdateAndRender(Platform *platform_);
+#define APP_UPDATE_AND_RENDER(name) void name(Platform *platform)
+typedef APP_UPDATE_AND_RENDER(AppUpdateAndRenderType);
+DUNGEONS_EXPORT extern "C" APP_UPDATE_AND_RENDER(App_UpdateAndRender);
 
 #endif /* DUNGEONS_PLATFORM_HPP */

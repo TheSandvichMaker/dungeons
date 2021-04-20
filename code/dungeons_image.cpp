@@ -12,19 +12,19 @@ ParseBitmap(Buffer buffer)
         
         if (header->size < sizeof(header))
         {
-            platform->ReportError(PlatformError_Nonfatal, "bitmap parse error: header too small");
+            platform->ReportError(PlatformError_Nonfatal, "Bitmap parse error: header too small");
             return result;
         }
         
         if (header->height < 0)
         {
-            platform->ReportError(PlatformError_Nonfatal, "bitmap parse error: has to be bottom-up");
+            platform->ReportError(PlatformError_Nonfatal, "Bitmap parse error: has to be bottom-up");
             return result;
         }
         
         if (header->compression != 3)
         {
-            platform->ReportError(PlatformError_Nonfatal, "bitmap parse error: must be uncompressed 32 bit");
+            platform->ReportError(PlatformError_Nonfatal, "Bitmap parse error: must be uncompressed 32 bit");
             return result;
         }
         

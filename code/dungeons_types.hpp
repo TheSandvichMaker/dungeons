@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <float.h>
 
 struct Arena
 {
@@ -127,6 +128,29 @@ struct Buffer
     uint8_t *data;
 };
 typedef Buffer String;
+
+#define StringLiteral(lit) String { sizeof(lit) - 1, (uint8_t *)lit }
+#define StringExpand(string) (int)(string).size, (char *)(string).data
+
+struct StringContainer
+{
+    union
+    {
+        struct
+        {
+            size_t size;
+            uint8_t *data;
+        };
+        String string;
+    };
+    size_t capacity;
+};
+
+struct Range
+{
+    // convention is [start .. end)
+    int start, end;
+};
 
 // NOTE: These colors are in BGRA byte order
 struct Color
