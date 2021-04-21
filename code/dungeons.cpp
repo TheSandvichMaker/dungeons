@@ -114,4 +114,18 @@ App_UpdateAndRender(Platform *platform_)
 
     ClearBitmap(render_state->target, MakeColor(0, 0, 0));
     UpdateAndRenderEntities();
+
+    PlatformEvent event;
+    if (PopEvent(&event, PlatformEventFilter_MouseDown))
+    {
+        if (event.mouse_button == PlatformMouseButton_Left)
+        {
+            V2i mouse_world_p = ScreenToWorld(mouse_p);
+            Entity *e = GetEntity(entity_manager->entity_grid[mouse_world_p.x][mouse_world_p.y]);
+            if (e)
+            {
+                platform->ReportError(PlatformError_Nonfatal, "That's a dude or a wall, index %d", e->handle.index);
+            }
+        }
+    }
 }

@@ -78,6 +78,15 @@ MakeWall(uint32_t wall_flags, Color foreground = COLOR_WHITE, Color background =
     return result;
 }
 
+static inline V2i
+ScreenToWorld(V2i p)
+{
+    p.x /= render_state->world_font->glyph_w;
+    p.y /= render_state->world_font->glyph_h;
+    p -= render_state->camera_bottom_left;
+    return p;
+}
+
 static inline void
 ClearBitmap(Bitmap *bitmap, Color clear_color)
 {

@@ -18,6 +18,67 @@ HasProperty(Entity *e, EntityPropertyKind property)
 }
 
 static inline Entity *
+GetEntity(EntityHandle handle)
+{
+    Entity *slot = &entity_manager->entities[handle.index];
+    if (slot->handle.generation == handle.generation)
+    {
+        return slot;
+    }
+    return nullptr;
+}
+
+static inline bool
+RemoveEntityFromGrid(Entity *e)
+{
+    bool result = true;
+
+    if ((e->p.x >= 0) &&
+        (e->p.y >= 0) &&
+        (e->p.x < WORLD_EXTENT_X) &&
+        (e->p.y < WORLD_EXTENT_Y))
+    {
+        EntityHandle grid_slot = entity_manager->entity_grid[e->p.x][e->p.y];
+        if (grid_slot == e->handle)
+        {
+            entity_manager->entity_grid[e->p.x][e->p.y] = {};
+        }
+        else
+        {
+            result = false;
+        }
+    }
+
+    return result;
+}
+
+static inline bool
+MoveEntity(Entity *e, V2i p)
+{
+    bool result = true;
+
+    RemoveEntityFromGrid(e);
+
+    if ((p.x >= 0) &&
+        (p.y >= 0) &&
+        (p.x < WORLD_EXTENT_X) &&
+        (p.y < WORLD_EXTENT_Y))
+    {
+        if (entity_manager->entity_grid[p.x][p.y] == NullEntityHandle())
+        {
+            entity_manager->entity_grid[p.x][p.y] = e->handle;
+            e->p = p;
+        }
+        else
+        {
+            result = false;
+        }
+    }
+
+    return result;
+}
+
+static inline Entity *
 AddEntity(V2i p, Sprite sprite)
 {
     Entity *result = nullptr;
@@ -45,9 +106,18 @@ AddEntity(V2i p, Sprite sprite)
         result->p = p;
         result->health = 2;
         result->sprite = sprite;
+
+        MoveEntity(result, p);
     }
 
     return result;
+}
+
+static inline void
+KillEntity(Entity *e)
+{
+    UnsetProperty(e, EntityProperty_Alive);
+    RemoveEntityFromGrid(e);
 }
 
 static inline bool
@@ -115,7 +185,7 @@ UpdateAndRenderEntities(void)
                     }
                     else
                     {
-                        e->p = new_p;
+                        MoveEntity(e, new_p);
                     }
                 }
             }
@@ -135,8 +205,7 @@ UpdateAndRenderEntities(void)
         {
             if (HasProperty(e, EntityProperty_Dying))
             {
-                UnsetProperty(e, EntityProperty_Dying);
-                UnsetProperty(e, EntityProperty_Alive);
+                KillEntity(e);
             }
         }
         DrawTile(Draw_World, e->p, sprite);

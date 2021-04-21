@@ -2,6 +2,8 @@
 #define DUNGEONS_ENTITY_HPP
 
 #define MAX_ENTITY_COUNT (1 << 16)
+#define WORLD_EXTENT_X 1024
+#define WORLD_EXTENT_Y 1024
 
 enum EntityPropertyKind
 {
@@ -16,6 +18,19 @@ struct EntityHandle
     uint32_t index;
     uint32_t generation;
 };
+
+static inline bool
+operator == (EntityHandle a, EntityHandle b)
+{
+    return (a.index == b.index && a.generation == b.generation);
+}
+
+static inline EntityHandle
+NullEntityHandle(void)
+{
+    EntityHandle result = {};
+    return result;
+}
 
 struct Entity
 {
@@ -36,6 +51,7 @@ struct EntityManager
     float turn_timer;
     uint32_t entity_count;
     Entity entities[MAX_ENTITY_COUNT];
+    EntityHandle entity_grid[WORLD_EXTENT_X][WORLD_EXTENT_X];
 };
 GLOBAL_STATE(EntityManager, entity_manager);
 
