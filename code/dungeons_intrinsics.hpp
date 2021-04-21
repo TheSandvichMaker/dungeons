@@ -1,6 +1,11 @@
 #ifndef DUNGEONS_INTRINSICS_HPP
 #define DUNGEONS_INTRINSICS_HPP
 
+#include <intrin.h>
+#include <immintrin.h>
+#include <xmmintrin.h>
+#include <wmmintrin.h>
+
 struct BitScanResult
 {
     uint32_t found;

@@ -7,6 +7,7 @@
 #define DUNGEONS_EXPORT
 #endif
 
+#define SimpleAssert(x) ((x) ? 1 : (__debugbreak(), 0))
 #define Assert(x) \
     ((x) ? 1 \
          : (platform->ReportError(PlatformError_Fatal, \
@@ -20,6 +21,10 @@
 #else
 #define AssertSlow(x) 
 #endif
+
+#define StaticAssert(condition, message) (0) /* static_assert(condition, message) */
+
+#define UNUSED_VARIABLE(x) (void)(x)
 
 #define FILE_AND_LINE_STRING__(File, Line) File ":" #Line
 #define FILE_AND_LINE_STRING_(File, Line) FILE_AND_LINE_STRING__(File, Line)
@@ -56,6 +61,7 @@
 #define Terabytes(x) (Gigabytes(x)*1024ull)
 
 #include "dungeons_types.hpp"
+#include "dungeons_intrinsics.hpp"
 
 enum PlatformEventType
 {
@@ -255,6 +261,7 @@ struct Platform
     bool exit_requested;
 
     bool app_initialized;
+    bool exe_reloaded;
     void *persistent_app_data;
 
     float dt;
@@ -321,6 +328,6 @@ PopEvent(PlatformEvent *out_event, PlatformEventFilter filter = PlatformEventFil
 
 #define APP_UPDATE_AND_RENDER(name) void name(Platform *platform)
 typedef APP_UPDATE_AND_RENDER(AppUpdateAndRenderType);
-DUNGEONS_EXPORT extern "C" APP_UPDATE_AND_RENDER(App_UpdateAndRender);
+extern "C" DUNGEONS_EXPORT APP_UPDATE_AND_RENDER(App_UpdateAndRender);
 
 #endif /* DUNGEONS_PLATFORM_HPP */

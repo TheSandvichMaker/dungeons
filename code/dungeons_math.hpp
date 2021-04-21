@@ -17,44 +17,214 @@
 
 // Constructor functions
 
-DUNGEONS_INLINE Color
-MakeColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255)
-{
-    Color color;
-    color.r = r;
-    color.g = g;
-    color.b = b;
-    color.a = a;
-    return color;
-}
+#if COMPILER_MSVC
+#define MakeVectorInternal(type, ...) type { __VA_ARGS__ }
+#else
+#define MakeVectorInternal(type, ...) (type) { __VA_ARGS__ }
+#endif
 
-DUNGEONS_INLINE V2 MakeV2(float s) { return (V2) { s, s }; }
-DUNGEONS_INLINE V2 MakeV2(float x, float y) { return (V2) { x, y }; }
-DUNGEONS_INLINE V3 MakeV3(float s) { return (V3) { s, s, s }; }
-DUNGEONS_INLINE V3 MakeV3(V2 xy, float z) { return (V3) { xy[0], xy[1], z }; }
-DUNGEONS_INLINE V3 MakeV3(float x, V2 yz) { return (V3) { x, yz[0], yz[1] }; }
-DUNGEONS_INLINE V3 MakeV3(float x, float y, float z) { return (V3) { x, y, z }; }
-DUNGEONS_INLINE V4 MakeV4(float s) { return (V4) { s, s, s, s }; }
-DUNGEONS_INLINE V4 MakeV4(V2 xy, float z, float w) { return (V4) { xy[0], xy[1], z, w }; }
-DUNGEONS_INLINE V4 MakeV4(float x, float y, V2 zw) { return (V4) { x, y, zw[0], zw[1] }; }
-DUNGEONS_INLINE V4 MakeV4(V2 xy, V2 zw) { return (V4) { xy[0], xy[1], zw[0], zw[1] }; }
-DUNGEONS_INLINE V4 MakeV4(V3 xyz, float w) { return (V4) { xyz[0], xyz[1], xyz[2], w }; }
-DUNGEONS_INLINE V4 MakeV4(float x, V3 yzw) { return (V4) { x, yzw[0], yzw[1], yzw[2] }; }
-DUNGEONS_INLINE V4 MakeV4(float x, float y, float z, float w) { return (V4) { x, y, z, w }; }
+DUNGEONS_INLINE V2 MakeV2(float s) { return MakeVectorInternal(V2, s, s); }
+DUNGEONS_INLINE V2 MakeV2(float x, float y) { return MakeVectorInternal(V2, x, y); }
+DUNGEONS_INLINE V3 MakeV3(float s) { return MakeVectorInternal(V3, s, s, s); }
+DUNGEONS_INLINE V3 MakeV3(V2 xy, float z) { return MakeVectorInternal(V3, xy[0], xy[1], z); }
+DUNGEONS_INLINE V3 MakeV3(float x, V2 yz) { return MakeVectorInternal(V3, x, yz[0], yz[1]); }
+DUNGEONS_INLINE V3 MakeV3(float x, float y, float z) { return MakeVectorInternal(V3, x, y, z); }
+DUNGEONS_INLINE V4 MakeV4(float s) { return MakeVectorInternal(V4, s, s, s, s); }
+DUNGEONS_INLINE V4 MakeV4(V2 xy, float z, float w) { return MakeVectorInternal(V4, xy[0], xy[1], z, w); }
+DUNGEONS_INLINE V4 MakeV4(float x, float y, V2 zw) { return MakeVectorInternal(V4, x, y, zw[0], zw[1]); }
+DUNGEONS_INLINE V4 MakeV4(V2 xy, V2 zw) { return MakeVectorInternal(V4, xy[0], xy[1], zw[0], zw[1]); }
+DUNGEONS_INLINE V4 MakeV4(V3 xyz, float w) { return MakeVectorInternal(V4, xyz[0], xyz[1], xyz[2], w); }
+DUNGEONS_INLINE V4 MakeV4(float x, V3 yzw) { return MakeVectorInternal(V4, x, yzw[0], yzw[1], yzw[2]); }
+DUNGEONS_INLINE V4 MakeV4(float x, float y, float z, float w) { return MakeVectorInternal(V4, x, y, z, w); }
 
-DUNGEONS_INLINE V2i MakeV2i(int32_t s) { return (V2i) { s, s }; }
-DUNGEONS_INLINE V2i MakeV2i(int32_t x, int32_t y) { return (V2i) { x, y }; }
-DUNGEONS_INLINE V3i MakeV3i(int32_t s) { return (V3i) { s, s, s }; }
-DUNGEONS_INLINE V3i MakeV3i(V2i xy, int32_t z) { return (V3i) { xy[0], xy[1], z }; }
-DUNGEONS_INLINE V3i MakeV3i(int32_t x, V2i yz) { return (V3i) { x, yz[0], yz[1] }; }
-DUNGEONS_INLINE V3i MakeV3i(int32_t x, int32_t y, int32_t z) { return (V3i) { x, y, z }; }
-DUNGEONS_INLINE V4i MakeV4i(int32_t s) { return (V4i) { s, s, s, s }; }
-DUNGEONS_INLINE V4i MakeV4i(V2i xy, int32_t z, int32_t w) { return (V4i) { xy[0], xy[1], z, w }; }
-DUNGEONS_INLINE V4i MakeV4i(int32_t x, int32_t y, V2i zw) { return (V4i) { x, y, zw[0], zw[1] }; }
-DUNGEONS_INLINE V4i MakeV4i(V2i xy, V2i zw) { return (V4i) { xy[0], xy[1], zw[0], zw[1] }; }
-DUNGEONS_INLINE V4i MakeV4i(V3i xyz, int32_t w) { return (V4i) { xyz[0], xyz[1], xyz[2], w }; }
-DUNGEONS_INLINE V4i MakeV4i(int32_t x, V3i yzw) { return (V4i) { x, yzw[0], yzw[1], yzw[2] }; }
-DUNGEONS_INLINE V4i MakeV4i(int32_t x, int32_t y, int32_t z, int32_t w) { return (V4i) { x, y, z, w }; }
+DUNGEONS_INLINE V2i MakeV2i(int32_t s) { return MakeVectorInternal(V2i, s, s); }
+DUNGEONS_INLINE V2i MakeV2i(int32_t x, int32_t y) { return MakeVectorInternal(V2i, x, y); }
+DUNGEONS_INLINE V3i MakeV3i(int32_t s) { return MakeVectorInternal(V3i, s, s, s); }
+DUNGEONS_INLINE V3i MakeV3i(V2i xy, int32_t z) { return MakeVectorInternal(V3i, xy[0], xy[1], z); }
+DUNGEONS_INLINE V3i MakeV3i(int32_t x, V2i yz) { return MakeVectorInternal(V3i, x, yz[0], yz[1]); }
+DUNGEONS_INLINE V3i MakeV3i(int32_t x, int32_t y, int32_t z) { return MakeVectorInternal(V3i, x, y, z); }
+DUNGEONS_INLINE V4i MakeV4i(int32_t s) { return MakeVectorInternal(V4i, s, s, s, s); }
+DUNGEONS_INLINE V4i MakeV4i(V2i xy, int32_t z, int32_t w) { return MakeVectorInternal(V4i, xy[0], xy[1], z, w); }
+DUNGEONS_INLINE V4i MakeV4i(int32_t x, int32_t y, V2i zw) { return MakeVectorInternal(V4i, x, y, zw[0], zw[1]); }
+DUNGEONS_INLINE V4i MakeV4i(V2i xy, V2i zw) { return MakeVectorInternal(V4i, xy[0], xy[1], zw[0], zw[1]); }
+DUNGEONS_INLINE V4i MakeV4i(V3i xyz, int32_t w) { return MakeVectorInternal(V4i, xyz[0], xyz[1], xyz[2], w); }
+DUNGEONS_INLINE V4i MakeV4i(int32_t x, V3i yzw) { return MakeVectorInternal(V4i, x, yzw[0], yzw[1], yzw[2]); }
+DUNGEONS_INLINE V4i MakeV4i(int32_t x, int32_t y, int32_t z, int32_t w) { return MakeVectorInternal(V4i, x, y, z, w); }
+
+#if COMPILER_MSVC
+
+#define IMPLEMENT_V2_VECTOR_OPERATORS(type, scalar_type, op) \
+    DUNGEONS_INLINE type                                     \
+    operator op (const type &a, const type &b)               \
+    {                                                        \
+        type result;                                         \
+        result.x = a.x op b.x;                               \
+        result.y = a.y op b.y;                               \
+        return result;                                       \
+    }                                                        \
+    DUNGEONS_INLINE type &                                   \
+    operator Paste(op, =) (type &a, const type &b)           \
+    {                                                        \
+        a = a op b;                                          \
+        return a;                                            \
+    }
+
+#define IMPLEMENT_V2_SCALAR_OPERATORS(type, scalar_type, op) \
+    DUNGEONS_INLINE type                                     \
+    operator op (const type &a, scalar_type b)               \
+    {                                                        \
+        type result;                                         \
+        result.x = a.x op b;                                 \
+        result.y = a.y op b;                                 \
+        return result;                                       \
+    }                                                        \
+    DUNGEONS_INLINE type                                     \
+    operator op (scalar_type a, const type &b)               \
+    {                                                        \
+        type result;                                         \
+        result.x = a op b.x;                                 \
+        result.y = a op b.y;                                 \
+        return result;                                       \
+    }                                                        \
+    DUNGEONS_INLINE type &                                   \
+    operator Paste(op, =) (type &a, scalar_type b)           \
+    {                                                        \
+        a = a op b;                                          \
+        return a;                                            \
+    }
+
+#define IMPLEMENT_V3_VECTOR_OPERATORS(type, scalar_type, op) \
+    DUNGEONS_INLINE type                                     \
+    operator op (const type &a, const type &b)               \
+    {                                                        \
+        type result;                                         \
+        result.x = a.x op b.x;                               \
+        result.y = a.y op b.y;                               \
+        result.z = a.z op b.z;                               \
+        return result;                                       \
+    }                                                        \
+    DUNGEONS_INLINE type &                                   \
+    operator Paste(op, =) (type &a, const type &b)           \
+    {                                                        \
+        a = a op b;                                          \
+        return a;                                            \
+    }
+
+#define IMPLEMENT_V3_SCALAR_OPERATORS(type, scalar_type, op) \
+    DUNGEONS_INLINE type                                     \
+    operator op (const type &a, scalar_type b)               \
+    {                                                        \
+        type result;                                         \
+        result.x = a.x op b;                                 \
+        result.y = a.y op b;                                 \
+        result.z = a.z op b;                                 \
+        return result;                                       \
+    }                                                        \
+    DUNGEONS_INLINE type                                     \
+    operator op (scalar_type a, const type &b)               \
+    {                                                        \
+        type result;                                         \
+        result.x = a op b.x;                                 \
+        result.y = a op b.y;                                 \
+        result.z = a op b.z;                                 \
+        return result;                                       \
+    }                                                        \
+    DUNGEONS_INLINE type &                                   \
+    operator Paste(op, =) (type &a, scalar_type b)           \
+    {                                                        \
+        a = a op b;                                          \
+        return a;                                            \
+    }
+
+#define IMPLEMENT_V4_VECTOR_OPERATORS(type, scalar_type, op) \
+    DUNGEONS_INLINE type                                     \
+    operator op (const type &a, const type &b)               \
+    {                                                        \
+        type result;                                         \
+        result.x = a.x op b.x;                               \
+        result.y = a.y op b.y;                               \
+        result.z = a.z op b.z;                               \
+        result.w = a.w op b.w;                               \
+        return result;                                       \
+    }                                                        \
+    DUNGEONS_INLINE type &                                   \
+    operator Paste(op, =) (type &a, const type &b)           \
+    {                                                        \
+        a = a op b;                                          \
+        return a;                                            \
+    }
+
+#define IMPLEMENT_V4_SCALAR_OPERATORS(type, scalar_type, op) \
+    DUNGEONS_INLINE type                                     \
+    operator op (const type &a, scalar_type b)               \
+    {                                                        \
+        type result;                                         \
+        result.x = a.x op b;                                 \
+        result.y = a.y op b;                                 \
+        result.z = a.z op b;                                 \
+        result.w = a.w op b;                                 \
+        return result;                                       \
+    }                                                        \
+    DUNGEONS_INLINE type                                     \
+    operator op (scalar_type a, const type &b)               \
+    {                                                        \
+        type result;                                         \
+        result.x = a op b.x;                                 \
+        result.y = a op b.y;                                 \
+        result.z = a op b.z;                                 \
+        result.w = a op b.w;                                 \
+        return result;                                       \
+    }                                                        \
+    DUNGEONS_INLINE type &                                   \
+    operator Paste(op, =) (type &a, scalar_type b)           \
+    {                                                        \
+        a = a op b;                                          \
+        return a;                                            \
+    }
+
+IMPLEMENT_V2_VECTOR_OPERATORS(V2, float, +)
+IMPLEMENT_V2_VECTOR_OPERATORS(V2, float, -)
+IMPLEMENT_V2_SCALAR_OPERATORS(V2, float, *)
+IMPLEMENT_V2_SCALAR_OPERATORS(V2, float, /)
+IMPLEMENT_V2_VECTOR_OPERATORS(V2, float, *)
+IMPLEMENT_V2_VECTOR_OPERATORS(V2, float, /)
+
+IMPLEMENT_V3_VECTOR_OPERATORS(V3, float, +)
+IMPLEMENT_V3_VECTOR_OPERATORS(V3, float, -)
+IMPLEMENT_V3_SCALAR_OPERATORS(V3, float, *)
+IMPLEMENT_V3_SCALAR_OPERATORS(V3, float, /)
+IMPLEMENT_V3_VECTOR_OPERATORS(V3, float, *)
+IMPLEMENT_V3_VECTOR_OPERATORS(V3, float, /)
+
+IMPLEMENT_V4_VECTOR_OPERATORS(V4, float, +)
+IMPLEMENT_V4_VECTOR_OPERATORS(V4, float, -)
+IMPLEMENT_V4_SCALAR_OPERATORS(V4, float, *)
+IMPLEMENT_V4_SCALAR_OPERATORS(V4, float, /)
+IMPLEMENT_V4_VECTOR_OPERATORS(V4, float, *)
+IMPLEMENT_V4_VECTOR_OPERATORS(V4, float, /)
+
+IMPLEMENT_V2_VECTOR_OPERATORS(V2i, int32_t, +)
+IMPLEMENT_V2_VECTOR_OPERATORS(V2i, int32_t, -)
+IMPLEMENT_V2_SCALAR_OPERATORS(V2i, int32_t, *)
+IMPLEMENT_V2_SCALAR_OPERATORS(V2i, int32_t, /)
+IMPLEMENT_V2_VECTOR_OPERATORS(V2i, int32_t, *)
+IMPLEMENT_V2_VECTOR_OPERATORS(V2i, int32_t, /)
+
+IMPLEMENT_V3_VECTOR_OPERATORS(V3i, int32_t, +)
+IMPLEMENT_V3_VECTOR_OPERATORS(V3i, int32_t, -)
+IMPLEMENT_V3_SCALAR_OPERATORS(V3i, int32_t, *)
+IMPLEMENT_V3_SCALAR_OPERATORS(V3i, int32_t, /)
+IMPLEMENT_V3_VECTOR_OPERATORS(V3i, int32_t, *)
+IMPLEMENT_V3_VECTOR_OPERATORS(V3i, int32_t, /)
+
+IMPLEMENT_V4_VECTOR_OPERATORS(V4i, int32_t, +)
+IMPLEMENT_V4_VECTOR_OPERATORS(V4i, int32_t, -)
+IMPLEMENT_V4_SCALAR_OPERATORS(V4i, int32_t, *)
+IMPLEMENT_V4_SCALAR_OPERATORS(V4i, int32_t, /)
+IMPLEMENT_V4_VECTOR_OPERATORS(V4i, int32_t, *)
+IMPLEMENT_V4_VECTOR_OPERATORS(V4i, int32_t, /)
+
+#endif
 
 DUNGEONS_INLINE float Square(float x) { return x*x; }
 DUNGEONS_INLINE float SquareRoot(float x) { return sqrtf(x); }
@@ -73,6 +243,12 @@ DUNGEONS_INLINE float ASinH(float x) { return asinhf(x); }
 DUNGEONS_INLINE float ACosH(float x) { return acoshf(x); }
 DUNGEONS_INLINE float ATanH(float x) { return atanhf(x); }
 DUNGEONS_INLINE float Abs(float x) { return fabsf(x); }
+
+DUNGEONS_INLINE int32_t
+Abs(int32_t x)
+{
+    return (x < 0 ? -x : x);
+}
 
 DUNGEONS_INLINE int
 DivFloor(int a, int b)
@@ -635,7 +811,7 @@ ManhattanDistance(V2i a, V2i b)
 }
 
 DUNGEONS_INLINE int32_t
-ManhattanDistance(V3i a, V3i b, V3i c)
+ManhattanDistance(V3i a, V3i b)
 {
     int32_t result = Abs(a.x - b.x) + Abs(a.y - b.y) + Abs(a.z - b.z);
     return result;

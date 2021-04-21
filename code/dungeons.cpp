@@ -1,7 +1,10 @@
 #include "dungeons.hpp"
 
+#include "dungeons_string.cpp"
+#include "dungeons_global_state.cpp"
 #include "dungeons_image.cpp"
 #include "dungeons_render.cpp"
+#include "dungeons_entity.cpp"
 
 // Ryan's text controls example: https://hatebin.com/ovcwtpsfmj
 
@@ -79,23 +82,32 @@ App_UpdateAndRender(Platform *platform_)
 {
     platform = platform_;
 
+    GameState *game_state = (GameState *)platform->persistent_app_data;
     if (!platform->app_initialized)
     {
-        GameState *game_state = BootstrapPushStruct(GameState, permanent_arena);
+        game_state = BootstrapPushStruct(GameState, permanent_arena);
+        platform->persistent_app_data = game_state;
+    }
+    
+    if (platform->exe_reloaded)
+    {
+        RestoreGlobalState(&game_state->transient_arena);
+    }
 
+    if (!platform->app_initialized)
+    {
         game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font16x16.bmp"), 16, 16);
         game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font8x16.bmp"), 8, 16);
-        InitializeRenderState(&game_state->render_state, &platform->backbuffer, &game_state->world_font, &game_state->ui_font);
+        InitializeRenderState(&platform->backbuffer, &game_state->world_font, &game_state->ui_font);
 
-        platform->persistent_app_data = game_state;
+        AddRoom(MakeRect2iMinDim(2, 2, 8, 8));
+        AddEntity(MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1, MakeColor(255, 0, 0)));
+
         platform->app_initialized = true;
     }
 
-    GameState *game_state = (GameState *)platform->persistent_app_data;
-    RenderState *render_state = &game_state->render_state;
-
     V2i mouse_p = MakeV2i(platform->mouse_x, platform->mouse_y);
 
-    ClearBitmap(&platform->backbuffer, MakeColor(0, 255, 0));
-    DrawRect(render_state, Draw_World, MakeRect2iMinDim(4, 4, 68, 5), MakeColor(255, 255, 255), MakeColor(0, 0, 0));
+    ClearBitmap(&platform->backbuffer, MakeColor(0, 0, 0));
+    UpdateAndRenderEntities();
 }

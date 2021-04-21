@@ -88,6 +88,23 @@ enum
     Glyph_NonbreakingSpace       = 255,
 };
 
+struct Sprite
+{
+    Color foreground;
+    Color background;
+    Glyph glyph;
+};
+
+static inline Sprite
+MakeSprite(Glyph glyph, Color foreground = COLOR_WHITE, Color background = COLOR_BLACK)
+{
+    Sprite sprite = {};
+    sprite.glyph = glyph;
+    sprite.foreground = foreground;
+    sprite.background = background;
+    return sprite;
+}
+
 enum WallSegment
 {
     Wall_Left        = 0x1,
@@ -98,69 +115,8 @@ enum WallSegment
     Wall_TopThick    = 0x20,
     Wall_Bottom      = 0x40,
     Wall_BottomThick = 0x80,
+    Wall_MAXVALUE = Wall_LeftThick|Wall_RightThick|Wall_TopThick|Wall_BottomThick,
 };
-
-static Glyph wall_segment_lookup[] =
-{
-    [Wall_Top|Wall_Bottom]                                          = 179,
-    [Wall_Top|Wall_Bottom|Wall_Left]                                = 180,
-    [Wall_Top|Wall_Bottom|Wall_LeftThick]                           = 181,
-    [Wall_TopThick|Wall_BottomThick|Wall_Left]                      = 182,
-    [Wall_Left|Wall_BottomThick]                                    = 183,
-    [Wall_LeftThick|Wall_Bottom]                                    = 184,
-    [Wall_LeftThick|Wall_TopThick|Wall_BottomThick]                 = 185,
-    [Wall_TopThick|Wall_BottomThick]                                = 186,
-    [Wall_LeftThick|Wall_BottomThick]                               = 187,
-    [Wall_LeftThick|Wall_TopThick]                                  = 188,
-    [Wall_Left|Wall_TopThick]                                       = 189,
-    [Wall_LeftThick|Wall_Top]                                       = 190,
-    [Wall_Left|Wall_Bottom]                                         = 191,
-    [Wall_Right|Wall_Top]                                           = 192,
-    [Wall_Left|Wall_Right|Wall_Top]                                 = 193,
-    [Wall_Left|Wall_Right|Wall_Bottom]                              = 194,
-    [Wall_Top|Wall_Bottom|Wall_Right]                               = 195,
-    [Wall_Left|Wall_Right]                                          = 196,
-    [Wall_Left|Wall_Right|Wall_Top|Wall_Bottom]                     = 197,
-    [Wall_Top|Wall_Bottom|Wall_RightThick]                          = 198,
-    [Wall_TopThick|Wall_BottomThick|Wall_Right]                     = 199,
-    [Wall_TopThick|Wall_RightThick]                                 = 200,
-    [Wall_BottomThick|Wall_RightThick]                              = 201,
-    [Wall_LeftThick|Wall_RightThick|Wall_TopThick]                  = 202,
-    [Wall_LeftThick|Wall_RightThick|Wall_BottomThick]               = 203,
-    [Wall_TopThick|Wall_BottomThick|Wall_RightThick]                = 204,
-    [Wall_LeftThick|Wall_RightThick]                                = 205,
-    [Wall_TopThick|Wall_BottomThick|Wall_LeftThick|Wall_RightThick] = 206,
-    [Wall_LeftThick|Wall_RightThick|Wall_Top]                       = 207,
-    [Wall_Left|Wall_Right|Wall_TopThick]                            = 208,
-    [Wall_LeftThick|Wall_RightThick|Wall_Bottom]                    = 209,
-    [Wall_Left|Wall_Right|Wall_BottomThick]                         = 210,
-    [Wall_TopThick|Wall_Right]                                      = 211,
-    [Wall_Top|Wall_RightThick]                                      = 212,
-    [Wall_RightThick|Wall_Bottom]                                   = 213,
-    [Wall_BottomThick|Wall_Right]                                   = 214,
-    [Wall_Left|Wall_TopThick|Wall_BottomThick|Wall_Right]           = 215,
-    [Wall_LeftThick|Wall_Top|Wall_Bottom|Wall_RightThick]           = 216,
-    [Wall_Left|Wall_Top]                                            = 217,
-    [Wall_Right|Wall_Bottom]                                        = 218,
-};
-
-static inline Glyph
-MakeWall(uint32_t wall_flags)
-{
-    Glyph result = 0;
-
-    if (wall_flags < ArrayCount(wall_segment_lookup))
-    {
-        result = wall_segment_lookup[wall_flags];
-    }
-
-    if (!result)
-    {
-        result = '?';
-    }
-
-    return result;
-}
 
 enum DrawMode
 {
@@ -175,6 +131,10 @@ struct RenderState
     Font *ui_font;
 
     V2i camera_bottom_left;
+
+    Glyph wall_segment_lookup[Wall_MAXVALUE + 1];
 };
+
+GLOBAL_STATE(RenderState, render_state);
 
 #endif /* DUNGEONS_RENDER_HPP */

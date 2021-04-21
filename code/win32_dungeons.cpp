@@ -250,7 +250,7 @@ Win32_ReportError(PlatformErrorType type, char *error, ...)
 #if DUNGEONS_INTERNAL
         __debugbreak();
 #else
-        ExitProcess(-1);
+        ExitProcess(1);
 #endif
     }
 }
@@ -260,7 +260,7 @@ Win32_ReadFile(Arena *arena, String filename)
 {
     Buffer result = {};
 
-    ScopedMemory temp_memory(&win32_state.temp_arena);
+    ScopedMemory filename_temp_memory(&win32_state.temp_arena);
     wchar_t *file_wide = Win32_Utf8ToUtf16(&win32_state.temp_arena, (char *)filename.data, (int)filename.size);
 
     HANDLE handle = CreateFileW(file_wide, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
@@ -543,7 +543,7 @@ FindExeFolderLikeAMonkeyInAMonkeySuit(void)
         exe_path = PushArrayNoClear(&win32_state.arena, exe_buffer_count, wchar_t);
 
         SetLastError(0);
-        exe_path_count = GetModuleFileNameW(0, exe_path, exe_buffer_count);
+        exe_path_count = GetModuleFileNameW(0, exe_path, (DWORD)exe_buffer_count);
 
         if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
         {
@@ -615,12 +615,10 @@ Win32_LoadAppCode(Win32AppCode *old_code)
 
     Win32AppCode new_code = {};
 
-    Win32_DebugPrint("Trying to load game code...\n");
-
     if (!Win32_FileExists(lock_file_path))
     {
         DeleteFileW(prev_temp_dll_path);
-        CopyFile(dll_path, temp_dll_path, false);
+        CopyFileW(dll_path, temp_dll_path, false);
 
         dll_generation += 1;
 
@@ -634,24 +632,15 @@ Win32_LoadAppCode(Win32AppCode *old_code)
             if (!new_code.UpdateAndRender)
             {
                 new_code.valid = false;
-                platform->ReportError(PlatformError_Fatal, "Could not load App_UpdateAndRender from app dll");
+                Win32_DebugPrint("Could not load App_UpdateAndRender from app dll");
             }
 
             if (new_code.valid)
             {
-                Win32_DebugPrint("I darn right did it...\n");
                 result = true;
                 *old_code = new_code;
             }
         }
-        else
-        {
-            platform->ReportError(PlatformError_Fatal, "Could not load app code (dungeons.dll)");
-        }
-    }
-    else
-    {
-        Win32_DebugPrint("What is this tootin' lock file doing in my way\n");
     }
 
     return result;
@@ -660,6 +649,9 @@ Win32_LoadAppCode(Win32AppCode *old_code)
 int
 WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_cmd)
 {
+    UNUSED_VARIABLE(command_line);
+    UNUSED_VARIABLE(prev_instance);
+
     platform = &platform_;
 
     SYSTEM_INFO system_info;
@@ -685,7 +677,11 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     win32_state.dll_path   = FormatWString(&win32_state.arena, L"\\\\?\\%s\\dungeons.dll", win32_state.exe_folder);
 
     Win32AppCode app_code;
-    Win32_LoadAppCode(&app_code);
+    if (!Win32_LoadAppCode(&app_code))
+    {
+        platform->ReportError(PlatformError_Fatal, "Could not load app code");
+    }
+     platform->exe_reloaded = true;
 
     HCURSOR arrow_cursor = LoadCursorW(nullptr, IDC_ARROW);
     HWND window = Win32_CreateWindow(instance, 32, 32, 1280, 720, L"Dungeons");
@@ -829,6 +825,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
         if (app_code.valid)
         {
             app_code.UpdateAndRender(platform);
+            platform->exe_reloaded = false;
         }
         Win32_DisplayOffscreenBuffer(window, buffer);
 
@@ -854,6 +851,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
             {
                 if (Win32_LoadAppCode(&app_code))
                 {
+                    platform->exe_reloaded = true;
                     break;
                 }
 

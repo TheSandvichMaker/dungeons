@@ -93,6 +93,10 @@ CheckArena(Arena* arena)
     PushSize_(arena, size, 1, true, LOCATION_STRING(#arena))
 #define PushSizeNoClear(arena, size) \
     PushSize_(arena, size, 1, false, LOCATION_STRING(#arena))
+#define PushAlignedSize(arena, size, align) \
+    PushSize_(arena, size, align, true, LOCATION_STRING(#arena))
+#define PushAlignedSizeNoClear(arena, size, align) \
+    PushSize_(arena, size, align, false, LOCATION_STRING(#arena))
 
 static inline void *
 PushSize_(Arena *arena, size_t Size, size_t Align, bool Clear, const char *Tag)
@@ -179,13 +183,11 @@ struct TemporaryMemory
 static inline TemporaryMemory
 BeginTemporaryMemory(Arena *arena)
 {
-    TemporaryMemory Result =
-    {
-        .arena = arena,
-        .used  = arena->used,
-    };
+    TemporaryMemory result = {};
+    result.arena = arena;
+    result.used  = arena->used;
     ++arena->temp_count;
-    return Result;
+    return result;
 }
 
 static inline void
