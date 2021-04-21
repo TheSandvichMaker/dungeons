@@ -88,7 +88,7 @@ App_UpdateAndRender(Platform *platform_)
         game_state = BootstrapPushStruct(GameState, permanent_arena);
         platform->persistent_app_data = game_state;
     }
-    
+
     if (platform->exe_reloaded)
     {
         RestoreGlobalState(&game_state->transient_arena);
@@ -101,13 +101,17 @@ App_UpdateAndRender(Platform *platform_)
         InitializeRenderState(&platform->backbuffer, &game_state->world_font, &game_state->ui_font);
 
         AddRoom(MakeRect2iMinDim(2, 2, 8, 8));
-        AddEntity(MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1, MakeColor(255, 0, 0)));
+
+        Entity *angry = AddEntity(MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1, MakeColor(255, 0, 0)));
+        SetProperty(angry, EntityProperty_AngryDude);
+
+        AddEntity(MakeV2i(5, 6), MakeSprite(Glyph_Dwarf2, MakeColor(0, 255, 0)));
 
         platform->app_initialized = true;
     }
 
     V2i mouse_p = MakeV2i(platform->mouse_x, platform->mouse_y);
 
-    ClearBitmap(&platform->backbuffer, MakeColor(0, 0, 0));
+    ClearBitmap(render_state->target, MakeColor(0, 0, 0));
     UpdateAndRenderEntities();
 }

@@ -6,6 +6,8 @@
 enum EntityPropertyKind
 {
     EntityProperty_Alive,
+    EntityProperty_Dying,
+    EntityProperty_AngryDude,
     EntityProperty_COUNT,
 };
 
@@ -20,12 +22,18 @@ struct Entity
     EntityHandle handle;
 
     V2i p;
+    int32_t health;
+
+    float flash_timer;
+    Color flash_color;
+
     Sprite sprite;
     uint64_t properties[(EntityProperty_COUNT + 63) / 64];
 };
 
 struct EntityManager
 {
+    float turn_timer;
     uint32_t entity_count;
     Entity entities[MAX_ENTITY_COUNT];
 };

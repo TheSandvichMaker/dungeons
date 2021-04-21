@@ -43,6 +43,7 @@ AddEntity(V2i p, Sprite sprite)
         SetProperty(result, EntityProperty_Alive);
         result->handle = { (uint32_t)(result - entity_manager->entities), gen };
         result->p = p;
+        result->health = 2;
         result->sprite = sprite;
     }
 
@@ -55,8 +56,7 @@ NextEntity(Entity **entity_at)
     Entity *e = *entity_at;
     if (!e)
     {
-        *entity_at = entity_manager->entities;
-        return true;
+        e = entity_manager->entities - 1;
     }
 
     Entity *end = entity_manager->entities + entity_manager->entity_count;
@@ -75,9 +75,71 @@ NextEntity(Entity **entity_at)
 static inline void
 UpdateAndRenderEntities(void)
 {
+    if (entity_manager->turn_timer <= 0.0f)
+    {
+        entity_manager->turn_timer += 1.0f;
+        for (Entity *e = nullptr; NextEntity(&e);)
+        {
+            if (HasProperty(e, EntityProperty_AngryDude))
+            {
+                uint32_t best_dist = UINT32_MAX;
+                Entity *target = nullptr;
+                for (Entity *other = nullptr; NextEntity(&other);)
+                {
+                    if (other != e)
+                    {
+                        V2i delta = other->p - e->p;
+                        uint32_t dist = LengthSq(delta);
+                        if (best_dist > dist)
+                        {
+                            best_dist = dist;
+                            target = other;
+                        }
+                    }
+                }
+
+                if (target)
+                {
+                    V2i delta = target->p - e->p;
+                    delta = Clamp(delta, MakeV2i(-1, -1), MakeV2i(1, 1));
+                    V2i new_p = e->p + delta;
+                    if (new_p == target->p)
+                    {
+                        target->health -= 1;
+                        target->flash_timer = 0.2f;
+                        target->flash_color = MakeColor(255, 0, 0);
+                        if (target->health <= 0)
+                        {
+                            SetProperty(target, EntityProperty_Dying);
+                        }
+                    }
+                    else
+                    {
+                        e->p = new_p;
+                    }
+                }
+            }
+        }
+    }
+    entity_manager->turn_timer -= platform->dt;
+
     for (Entity *e = nullptr; NextEntity(&e);)
     {
-        DrawTile(Draw_World, e->p, e->sprite);
+        Sprite sprite = e->sprite;
+        if (e->flash_timer > 0.0f)
+        {
+            sprite.foreground = e->flash_color;
+            e->flash_timer -= platform->dt;
+        }
+        else
+        {
+            if (HasProperty(e, EntityProperty_Dying))
+            {
+                UnsetProperty(e, EntityProperty_Dying);
+                UnsetProperty(e, EntityProperty_Alive);
+            }
+        }
+        DrawTile(Draw_World, e->p, sprite);
     }
 }
 

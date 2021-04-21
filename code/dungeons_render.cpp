@@ -234,11 +234,13 @@ void DrawRect(DrawMode mode, const Rect2i &rect, Color foreground, Color backgro
     uint32_t top    = Wall_Top;
     uint32_t bottom = Wall_Bottom;
 #if 0
-    if (flags & Format_OutlineThickHorz) {
+    if (flags & Format_OutlineThickHorz)
+    {
         left  = Wall_LeftThick;
         right = Wall_RightThick;
     }
-    if (flags & Format_OutlineThickVert) {
+    if (flags & Format_OutlineThickVert)
+    {
         top    = Wall_TopThick;
         bottom = Wall_BottomThick;
     }
