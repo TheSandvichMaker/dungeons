@@ -99,7 +99,7 @@ AppUpdateAndRender(Platform *platform_)
     {
         game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, "font16x16.bmp"_str, 16, 16);
         game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, "font8x16.bmp"_str, 8, 16);
-        InitializeRenderState(&platform->backbuffer, &game_state->world_font, &game_state->ui_font);
+        InitializeRenderState(&game_state->transient_arena, &platform->backbuffer, &game_state->world_font, &game_state->ui_font);
 
         AddRoom(MakeRect2iMinDim(1, 1, 16, 16));
 
@@ -113,9 +113,7 @@ AppUpdateAndRender(Platform *platform_)
 
     HandleController();
 
-    ClearBitmap(render_state->target, MakeColor(0, 0, 0));
-
-    BeginSpriteBatch(Draw_World, MAX_SPRITES);
+    BeginRender(Draw_World);
     UpdateAndRenderEntities();
-    EndSpriteBatch();
+    EndRender();
 }

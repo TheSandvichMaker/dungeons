@@ -1,6 +1,10 @@
 #ifndef DUNGEONS_RENDER_HPP
 #define DUNGEONS_RENDER_HPP
 
+#define DIRTY_RECT_COUNT_X 8
+#define DIRTY_RECT_COUNT_Y 8
+#define DIRTY_RECT_COUNT (DIRTY_RECT_COUNT_X*DIRTY_RECT_COUNT_Y)
+
 // NOTE: These are for code page 437 fonts
 // https://en.wikipedia.org/wiki/Code_page_437#Character_set
 typedef uint32_t Glyph;
@@ -130,6 +134,13 @@ struct SpriteToDraw
     V2i p;
 };
 
+struct TileMap
+{
+    int w, h;
+    Sprite *sprites;
+    bool *dirty_rects;
+};
+
 #define MAX_SPRITES (1 << 16)
 
 struct RenderState
@@ -144,9 +155,8 @@ struct RenderState
     Glyph wall_segment_lookup[Wall_MAXVALUE + 1];
 
     DrawMode sprite_mode;
-    uint32_t sprite_list_size;
-    uint32_t sprite_list_used;
-    SpriteToDraw *sprite_list;
+    TileMap ui_tile_map;
+    TileMap world_tile_map;
 };
 
 GLOBAL_STATE(RenderState, render_state);

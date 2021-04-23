@@ -1,5 +1,5 @@
 static inline void
-InitializeRenderState(Bitmap *target, Font *world_font, Font *ui_font)
+InitializeRenderState(Arena *arena, Bitmap *target, Font *world_font, Font *ui_font)
 {
     render_state->target     = target;
     render_state->world_font = world_font;
@@ -15,6 +15,22 @@ InitializeRenderState(Bitmap *target, Font *world_font, Font *ui_font)
     {
         platform->ReportError(PlatformError_Nonfatal, "Bad font metrics! The UI font is bigger than the World font (world: %dx%d versus ui: %dx%d)", world_font->glyph_w, world_font->glyph_h, ui_font->glyph_w, ui_font->glyph_h);
     }
+
+    int pixel_w = render_state->target->w;
+    int pixel_h = render_state->target->h;
+
+    auto AllocateTilemap = [](Arena *arena, Font *font, int pixel_w, int pixel_h)
+    {
+        TileMap map = {};
+        map.w = (pixel_w + font->glyph_w - 1) / font->glyph_w;
+        map.h = (pixel_h + font->glyph_h - 1) / font->glyph_h;
+        map.sprites = PushArray(arena, map.w*map.h, Sprite);
+        map.dirty_rects = PushArray(arena, map.w*map.h / DIRTY_RECT_COUNT, bool);
+        return map;
+    };
+
+    render_state->ui_tile_map = AllocateTilemap(arena, render_state->ui_font, pixel_w, pixel_h);
+    render_state->world_tile_map = AllocateTilemap(arena, render_state->world_font, pixel_w, pixel_h);
 
     render_state->wall_segment_lookup[Wall_Top|Wall_Bottom]                                          = 179;
     render_state->wall_segment_lookup[Wall_Top|Wall_Bottom|Wall_Left]                                = 180;
@@ -101,10 +117,15 @@ ScreenToWorld(V2i p)
 static inline void
 ClearBitmap(Bitmap *bitmap, Color clear_color)
 {
-    Color *at = bitmap->data;
-    for (int i = 0; i < bitmap->pitch*bitmap->h; ++i)
+    Color *row = bitmap->data;
+    for (int y = 0; y < bitmap->h; ++y)
     {
-        *at++ = clear_color;
+        Color *at = row;
+        for (int x = 0; x < bitmap->w; ++x)
+        {
+            *at++ = clear_color;
+        }
+        row += bitmap->pitch;
     }
 }
 
@@ -247,11 +268,22 @@ GetFont(DrawMode mode)
 static inline void
 DrawTile(V2i tile_p, Sprite sprite)
 {
-    if (render_state->sprite_list_used < render_state->sprite_list_size)
+    TileMap *map = nullptr;
+    if (render_state->sprite_mode == Draw_World)
     {
-        SpriteToDraw *to_draw = &render_state->sprite_list[render_state->sprite_list_used++];
-        to_draw->sprite = sprite;
-        to_draw->p = TileToScreen(render_state->sprite_mode, tile_p);
+        map = &render_state->world_tile_map;
+        tile_p -= render_state->camera_bottom_left;
+    }
+    else
+    {
+        Assert(render_state->sprite_mode == Draw_Ui);
+        map = &render_state->ui_tile_map;
+    }
+
+    if (tile_p.x > 0 && tile_p.y > 0 && tile_p.x < map->w && tile_p.y < map->h)
+    {
+        map->dirty_rects[tile_p.y*map->w / DIRTY_RECT_COUNT_Y + tile_p.x / DIRTY_RECT_COUNT_X] = true;
+        map->sprites[tile_p.y*map->w + tile_p.x] = sprite;
     }
 }
 
@@ -294,18 +326,23 @@ void DrawRect(const Rect2i &rect, Color foreground, Color background)
 }
 
 static void
-BeginSpriteBatch(DrawMode mode, uint32_t max_sprites)
+BeginRender(DrawMode mode)
 {
-    Assert(render_state->sprite_list_size == 0);
-
     render_state->sprite_mode = mode;
-    render_state->sprite_list_size = max_sprites;
-    render_state->sprite_list_used = 0;
-    render_state->sprite_list = PushArray(GetTempArena(), render_state->sprite_list_size, SpriteToDraw);
+
+    auto ClearMap = [](TileMap *map)
+    {
+        ZeroArray(map->w*map->h, map->sprites);
+        ZeroArray(map->w*map->h / DIRTY_RECT_COUNT, map->dirty_rects);
+    };
+
+    ClearMap(&render_state->ui_tile_map);
+    ClearMap(&render_state->world_tile_map);
 }
 
 struct TiledRenderJobParams
 {
+    TileMap *map;
     Rect2i clip_rect;
 };
 
@@ -314,47 +351,68 @@ PLATFORM_JOB(TiledRenderJob)
 {
     TiledRenderJobParams *params = (TiledRenderJobParams *)args;
 
+    TileMap *map = params->map;
     Rect2i clip_rect = params->clip_rect;
-    Bitmap target = MakeBitmapView(render_state->target, clip_rect);
 
     Font *font = GetFont(render_state->sprite_mode);
 
-    for (size_t i = 0; i < render_state->sprite_list_used; ++i)
+    for (int y = clip_rect.min.y; y < clip_rect.max.y; ++y)
+    for (int x = clip_rect.min.x; x < clip_rect.max.x; ++x)
     {
-        SpriteToDraw *to_draw = &render_state->sprite_list[i];
-
-        V2i p = to_draw->p;
-        Rect2i glyph_rect = GetGlyphRect(font, to_draw->sprite.glyph);
-
-        if (RectanglesOverlap(clip_rect, MakeRect2iMinDim(p, MakeV2i(font->glyph_w, font->glyph_h))))
+        V2i p = MakeV2i(x*font->glyph_w, y*font->glyph_h);
+        Sprite *sprite = &map->sprites[y*map->w + x];
+        if (sprite->glyph)
         {
-            V2i rel_p = p - clip_rect.min;
+            Rect2i glyph_rect = GetGlyphRect(font, sprite->glyph);
             Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, glyph_rect);
-            BlitBitmapMask(&target, &glyph_bitmap, rel_p, to_draw->sprite.foreground, to_draw->sprite.background);
+            BlitBitmapMask(render_state->target, &glyph_bitmap, p, sprite->foreground, sprite->background);
+        }
+        else
+        {
+            BlitRect(render_state->target, MakeRect2iMinDim(p.x, p.y, font->glyph_w, font->glyph_h), COLOR_BLACK);
         }
     }
 }
 
 static void
-EndSpriteBatch(void)
+RenderTileMap(TileMap *map)
 {
-    Rect2i target_rect = MakeRect2iMinDim(0, 0, render_state->target->w, render_state->target->h);
+    Rect2i pixel_target_bounds = MakeRect2iMinDim(0, 0, render_state->target->w, render_state->target->h);
+    Rect2i target_bounds = MakeRect2iMinDim(0, 0, map->w, map->h);
 
-    const int tile_count_x = 8;
-    const int tile_count_y = 8;
+    const int tile_count_x = DIRTY_RECT_COUNT_X;
+    const int tile_count_y = DIRTY_RECT_COUNT_Y;
     TiledRenderJobParams tiles[tile_count_x*tile_count_y];
 
-    int tile_w = render_state->target->w / tile_count_x;
-    int tile_h = render_state->target->h / tile_count_y;
+    int pixel_tile_w = render_state->target->w / tile_count_x;
+    int pixel_tile_h = render_state->target->h / tile_count_y;
+
+    int tile_w = map->w / tile_count_x;
+    int tile_h = map->h / tile_count_y;
 
     int next_tile = 0;
     for (int tile_x = 0; tile_x < tile_count_x; ++tile_x)
     for (int tile_y = 0; tile_y < tile_count_y; ++tile_y)
     {
+        bool is_dirty = &map->dirty_rects[next_tile];
+        if (!is_dirty)
+        {
+            continue;
+        }
+
+        Rect2i pixel_tile = MakeRect2iMinDim(tile_x*pixel_tile_w,
+                                             tile_y*pixel_tile_h,
+                                             pixel_tile_w,
+                                             pixel_tile_h);
+        pixel_tile = Intersect(pixel_tile, pixel_target_bounds); 
+        Bitmap target_view = MakeBitmapView(render_state->target, pixel_tile);
+        ClearBitmap(&target_view, COLOR_BLACK);
+
         TiledRenderJobParams *params = &tiles[next_tile++];
+        params->map = map;
 
         Rect2i rect = MakeRect2iMinDim(tile_x*tile_w, tile_y*tile_h, tile_w, tile_h);
-        rect = Intersect(target_rect, rect);
+        rect = Intersect(rect, target_bounds);
 
         params->clip_rect = rect;
 
@@ -362,6 +420,11 @@ EndSpriteBatch(void)
     }
 
     platform->WaitForJobs(platform->job_queue);
+}
 
-    render_state->sprite_list_size = 0;
+static void
+EndRender(void)
+{
+    RenderTileMap(&render_state->ui_tile_map);
+    RenderTileMap(&render_state->world_tile_map);
 }
