@@ -124,15 +124,29 @@ enum DrawMode
     Draw_Ui,
 };
 
+struct SpriteToDraw
+{
+    Sprite sprite;
+    V2i p;
+};
+
+#define MAX_SPRITES (1 << 16)
+
 struct RenderState
 {
     Bitmap *target;
     Font *world_font;
     Font *ui_font;
 
+    V2i ui_top_right;
     V2i camera_bottom_left;
 
     Glyph wall_segment_lookup[Wall_MAXVALUE + 1];
+
+    DrawMode sprite_mode;
+    uint32_t sprite_list_size;
+    uint32_t sprite_list_used;
+    SpriteToDraw *sprite_list;
 };
 
 GLOBAL_STATE(RenderState, render_state);

@@ -5,7 +5,6 @@ static LARGE_INTEGER g_perf_freq;
 static WINDOWPLACEMENT g_window_position = { sizeof(g_window_position) };
 
 static Win32State win32_state;
-
 static Platform platform_;
 
 extern "C"
@@ -217,14 +216,15 @@ FormatString(Arena *arena, char *fmt, ...)
 static inline void
 Win32_DebugPrint(char *fmt, ...)
 {
-    ScopedMemory temp(&win32_state.temp_arena);
+    Arena *arena = GetTempArena();
+    ScopedMemory temp(arena);
 
     va_list args;
     va_start(args, fmt);
-    char *formatted = FormatStringV(&win32_state.temp_arena, fmt, args);
+    char *formatted = FormatStringV(arena, fmt, args);
     va_end(args);
 
-    wchar_t *fmt_wide = Win32_Utf8ToUtf16(&win32_state.temp_arena, formatted);
+    wchar_t *fmt_wide = Win32_Utf8ToUtf16(arena, formatted);
 
     OutputDebugStringW(fmt_wide);
 }
@@ -232,14 +232,15 @@ Win32_DebugPrint(char *fmt, ...)
 static inline void
 Win32_ReportError(PlatformErrorType type, char *error, ...)
 {
-    ScopedMemory temp(&win32_state.temp_arena);
+    Arena *arena = GetTempArena();
+    ScopedMemory temp(arena);
 
     va_list args;
     va_start(args, error);
-    char *formatted_error = FormatStringV(&win32_state.temp_arena, error, args);
+    char *formatted_error = FormatStringV(arena, error, args);
     va_end(args);
 
-    wchar_t *error_wide = Win32_Utf8ToUtf16(&win32_state.temp_arena, formatted_error);
+    wchar_t *error_wide = Win32_Utf8ToUtf16(arena, formatted_error);
     if (error_wide)
     {
         MessageBoxW(0, error_wide, L"Error", MB_OK);
@@ -285,18 +286,18 @@ Win32_ReadFile(Arena *arena, String filename)
                 }
                 else
                 {
-                    Win32_DebugPrint("Did not read expected number of bytes from file '%s'", filename);
+                    Win32_DebugPrint("Did not read expected number of bytes from file '%s'\n", filename);
                 }
             }
             else
             {
-                Win32_DebugPrint("Could not read file '%s'", filename);
+                Win32_DebugPrint("Could not read file '%s'\n", filename);
             }
         }
     }
     else
     {
-        Win32_DebugPrint("Could not open file '%s'", filename);
+        Win32_DebugPrint("Could not open file '%s'\n", filename);
     }
 
     return result;
@@ -408,8 +409,6 @@ Win32_WindowProc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
             platform->render_h = client_rect.bottom;
 
             Win32_ResizeOffscreenBuffer(&platform->backbuffer, platform->render_w, platform->render_h);
-
-            // App_UpdateAndRender(platform);
             Win32_DisplayOffscreenBuffer(window, &platform->backbuffer);
 
             EndPaint(window, &paint);
@@ -626,13 +625,13 @@ Win32_LoadAppCode(Win32AppCode *old_code)
         if (new_code.dll)
         {
             new_code.last_write_time = Win32_GetLastWriteTime(dll_path);
-            new_code.UpdateAndRender = (AppUpdateAndRenderType *)GetProcAddress(new_code.dll, "App_UpdateAndRender");
+            new_code.UpdateAndRender = (AppUpdateAndRenderType *)GetProcAddress(new_code.dll, "AppUpdateAndRender");
 
             new_code.valid = true;
             if (!new_code.UpdateAndRender)
             {
                 new_code.valid = false;
-                Win32_DebugPrint("Could not load App_UpdateAndRender from app dll");
+                Win32_DebugPrint("Could not load AppUpdateAndRender from app dll\n");
             }
 
             if (new_code.valid)
@@ -644,6 +643,128 @@ Win32_LoadAppCode(Win32AppCode *old_code)
     }
 
     return result;
+}
+
+static inline void
+Win32_InitializeTLSForThread(ThreadLocalContext *context)
+{
+    if (!TlsSetValue(win32_state.thread_local_index, context))
+    {
+        Win32_ExitWithLastError();
+    }
+}
+
+static ThreadLocalContext *
+Win32_GetThreadLocalContext(void)
+{
+    ThreadLocalContext *result = (ThreadLocalContext *)TlsGetValue(win32_state.thread_local_index);
+    if (!result)
+    {
+        Win32_ExitWithLastError();
+    }
+    return result;
+}
+
+struct Win32ThreadArgs
+{
+    ThreadLocalContext *context;
+    PlatformJobQueue *queue;
+    HANDLE ready;
+};
+
+static DWORD WINAPI
+Win32_ThreadProc(LPVOID userdata)
+{
+    Win32ThreadArgs *args = (Win32ThreadArgs *)userdata;
+
+    Win32_InitializeTLSForThread(args->context);
+    PlatformJobQueue *queue = args->queue;
+    SetEvent(args->ready);
+
+    for (;;)
+    {
+        HANDLE handles[] = { queue->stop, queue->run };
+        if (WaitForMultipleObjects(2, handles, FALSE, INFINITE) == WAIT_OBJECT_0)
+        {
+            return 0;
+        }
+
+        uint32_t entry_index = InterlockedIncrement(&queue->next_read) - 1;
+
+        PlatformJobEntry *job = &queue->jobs[entry_index % ArrayCount(queue->jobs)];
+        job->proc(job->args);
+
+        uint32_t jobs_count = InterlockedDecrement(&queue->jobs_in_flight);
+        if (jobs_count == 0)
+        {
+            SetEvent(queue->done);
+        }
+    }
+}
+
+static void
+Win32_InitializeJobQueue(PlatformJobQueue *queue, int thread_count)
+{
+    queue->stop = CreateEventA(NULL, TRUE, FALSE, NULL);
+    queue->done = CreateEventA(NULL, TRUE, FALSE, NULL);
+    queue->run = CreateSemaphoreA(NULL, 0, thread_count, NULL);
+
+    ThreadLocalContext *tls = PushArray(&win32_state.arena, thread_count, ThreadLocalContext);
+
+    queue->thread_count = thread_count;
+    queue->threads = PushArray(&win32_state.arena, thread_count, HANDLE);
+
+    HANDLE ready = CreateEventA(NULL, FALSE, FALSE, NULL);
+    for (int i = 0; i < thread_count; ++i)
+    {
+        Win32ThreadArgs args = {};
+        args.context = &tls[i];
+        args.queue = queue;
+        args.ready = ready;
+
+        queue->threads[i] = CreateThread(NULL, 0, Win32_ThreadProc, &args, 0, NULL);
+        WaitForSingleObject(ready, INFINITE);
+    }
+    CloseHandle(ready);
+}
+
+static void
+Win32_AddJob(PlatformJobQueue *queue, void *args, PlatformJobProc *proc)
+{
+    uint32_t new_next_write = queue->next_write + 1;
+
+    PlatformJobEntry *entry = &queue->jobs[queue->next_write % ArrayCount(queue->jobs)];
+    entry->proc = proc;
+    entry->args = args;
+
+    MemoryBarrier();
+
+    queue->next_write = new_next_write;
+
+    InterlockedIncrement(&queue->jobs_in_flight);
+    ResetEvent(queue->done);
+
+    ReleaseSemaphore(queue->run, 1, NULL);
+}
+
+static void
+Win32_WaitForJobs(PlatformJobQueue *queue)
+{
+    WaitForSingleObject(queue->done, INFINITE);
+}
+
+static void
+Win32_CloseJobQueue(PlatformJobQueue *queue)
+{
+    SetEvent(queue->stop);
+    for (int i = 0; i < queue->thread_count; ++i)
+    {
+        WaitForSingleObject(queue->threads[i], INFINITE);
+        CloseHandle(queue->threads[i]);
+    }
+    CloseHandle(queue->stop);
+    CloseHandle(queue->run);
+    CloseHandle(queue->done);
 }
 
 int
@@ -663,21 +784,37 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     win32_state.allocation_sentinel.prev = &win32_state.allocation_sentinel;
 
     platform->page_size = system_info.dwPageSize;
+    platform->job_queue = &win32_state.job_queue;
+    platform->DebugPrint = Win32_DebugPrint;
     platform->ReportError = Win32_ReportError;
     platform->AllocateMemory = Win32_Allocate;
     platform->ReserveMemory = Win32_Reserve;
     platform->CommitMemory = Win32_Commit;
     platform->DecommitMemory = Win32_Decommit;
     platform->DeallocateMemory = Win32_Deallocate;
+    platform->GetThreadLocalContext = Win32_GetThreadLocalContext;
+    platform->AddJob = Win32_AddJob;
+    platform->WaitForJobs = Win32_WaitForJobs;
+    platform->ReadFile = Win32_ReadFile;
     platform->GetTime = Win32_GetTime;
     platform->SecondsElapsed = Win32_SecondsElapsed;
-    platform->ReadFile = Win32_ReadFile;
+
+    win32_state.thread_local_index = TlsAlloc();
+    if (win32_state.thread_local_index == TLS_OUT_OF_INDEXES)
+    {
+        Win32_ExitWithLastError();
+    }
+
+    ThreadLocalContext tls_context = {};
+    Win32_InitializeTLSForThread(&tls_context);
+
+    Win32_InitializeJobQueue(&win32_state.job_queue, 12);
 
     win32_state.exe_folder = FindExeFolderLikeAMonkeyInAMonkeySuit();
     win32_state.dll_path   = FormatWString(&win32_state.arena, L"\\\\?\\%s\\dungeons.dll", win32_state.exe_folder);
 
-    Win32AppCode app_code;
-    if (!Win32_LoadAppCode(&app_code))
+    Win32AppCode *app_code = &win32_state.app_code;
+    if (!Win32_LoadAppCode(app_code))
     {
         platform->ReportError(PlatformError_Fatal, "Could not load app code");
     }
@@ -698,7 +835,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
         Win32_DisplayLastError();
     }
 
-    // double smooth_frametime = 1.0f / 60.0f;
+    double smooth_frametime = 1.0f / 60.0f;
     PlatformHighResTime frame_start_time = Win32_GetTime();
 
     platform->dt = 1.0f / 60.0f;
@@ -707,6 +844,9 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     while (g_running)
     {
         Clear(&win32_state.temp_arena);
+
+        Arena *thread_local_temp = GetTempArena();
+        Clear(thread_local_temp);
 
         bool exit_requested = false;
         platform->first_event = platform->last_event = nullptr;
@@ -822,9 +962,9 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
 
         Bitmap *buffer = &platform->backbuffer;
 
-        if (app_code.valid)
+        if (app_code->valid)
         {
-            app_code.UpdateAndRender(platform);
+            app_code->UpdateAndRender(platform);
             platform->exe_reloaded = false;
         }
         Win32_DisplayOffscreenBuffer(window, buffer);
@@ -838,6 +978,12 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
         double seconds_elapsed = Win32_SecondsElapsed(frame_start_time, frame_end_time);
         Swap(frame_start_time, frame_end_time);
 
+        smooth_frametime = 0.9f*smooth_frametime + 0.1f*seconds_elapsed;
+        wchar_t *title = FormatWString(&win32_state.temp_arena, L"Dungeons - frame time: %fms, fps: %f\n",
+                                       1000.0*smooth_frametime,
+                                       1.0 / smooth_frametime);
+        SetWindowTextW(window, title);
+
         platform->dt = (float)seconds_elapsed;
         if (platform->dt > 1.0f / 15.0f)
         {
@@ -845,11 +991,11 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
         }
 
         uint64_t last_write_time = Win32_GetLastWriteTime(win32_state.dll_path);
-        if (app_code.last_write_time != last_write_time)
+        if (app_code->last_write_time != last_write_time)
         {
             for (int attempt = 0; attempt < 100; ++attempt)
             {
-                if (Win32_LoadAppCode(&app_code))
+                if (Win32_LoadAppCode(app_code))
                 {
                     platform->exe_reloaded = true;
                     break;
@@ -865,6 +1011,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
         }
     }
 
+    Win32_CloseJobQueue(platform->job_queue);
     Win32_ResizeOffscreenBuffer(&platform->backbuffer, 0, 0);
 
     bool leaked_memory = false;

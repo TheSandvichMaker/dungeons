@@ -23,6 +23,15 @@ struct Buffer
 };
 typedef Buffer String;
 
+constexpr String
+operator ""_str(const char *data, size_t size)
+{
+    String result = {};
+    result.size = size;
+    result.data = (uint8_t *)data;
+    return result;
+}
+
 #define StringLiteral(lit) String { sizeof(lit) - 1, (uint8_t *)lit }
 #define StringExpand(string) (int)(string).size, (char *)(string).data
 

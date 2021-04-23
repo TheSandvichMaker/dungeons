@@ -231,6 +231,13 @@ operator == (V2i a, V2i b)
             a.y == b.y);
 }
 
+DUNGEONS_INLINE bool
+operator != (V2i a, V2i b)
+{
+    return (a.x != b.x ||
+            a.y != b.y);
+}
+
 #endif
 
 DUNGEONS_INLINE float Square(float x) { return x*x; }
@@ -825,7 +832,7 @@ ManhattanDistance(V3i a, V3i b)
 }
 
 DUNGEONS_INLINE float
-DiagonalDistance(V2i a, V2i b, float diagonal_cost)
+DiagonalDistance(V2i a, V2i b, float diagonal_cost = SquareRoot(2.0f))
 {
     int32_t dx = Abs(a.x - b.x);
     int32_t dy = Abs(a.y - b.y);
@@ -834,7 +841,7 @@ DiagonalDistance(V2i a, V2i b, float diagonal_cost)
 }
 
 DUNGEONS_INLINE float
-DiagonalDistance(V3i a, V3i b, float diagonal_cost)
+DiagonalDistance(V3i a, V3i b, float diagonal_cost = SquareRoot(2.0f))
 {
     int32_t dx = Abs(a.x - b.x);
     int32_t dy = Abs(a.y - b.y);
@@ -1043,6 +1050,16 @@ GrowToContain(Rect2i a, V2i p)
     Rect2i result;
     result.min = Min(a.min, p);
     result.max = Max(a.max, p);
+    return result;
+}
+
+DUNGEONS_INLINE bool
+RectanglesOverlap(Rect2i a, Rect2i b)
+{
+    bool result = !(a.min.x >= b.max.x ||
+                    b.min.x >= a.max.x ||
+                    a.min.y >= b.max.y ||
+                    b.min.y >= a.max.y);
     return result;
 }
 

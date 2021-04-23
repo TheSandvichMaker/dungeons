@@ -5,10 +5,17 @@
 #define WORLD_EXTENT_X 1024
 #define WORLD_EXTENT_Y 1024
 
+struct Path
+{
+    uint32_t length;
+    V2i *positions;
+};
+
 enum EntityPropertyKind
 {
     EntityProperty_Alive,
     EntityProperty_Dying,
+    EntityProperty_PlayerControlled,
     EntityProperty_AngryDude,
     EntityProperty_COUNT,
 };
@@ -46,10 +53,34 @@ struct Entity
     uint64_t properties[(EntityProperty_COUNT + 63) / 64];
 };
 
+enum ActionKind
+{
+    Action_None,
+
+    Action_FollowPath,
+
+    Action_COUNT,
+};
+
+struct Action
+{
+    ActionKind kind;
+    Path path;
+};
+
 struct EntityManager
 {
+    Arena turn_arena;
     float turn_timer;
+
+    bool doing_action;
+    Entity *current_actor;
+    Action current_action;
+
     uint32_t entity_count;
+
+    Entity *player;
+
     Entity entities[MAX_ENTITY_COUNT];
     EntityHandle entity_grid[WORLD_EXTENT_X][WORLD_EXTENT_X];
 };

@@ -56,6 +56,9 @@ InitializeRenderState(Bitmap *target, Font *world_font, Font *ui_font)
     render_state->wall_segment_lookup[Wall_LeftThick|Wall_Top|Wall_Bottom|Wall_RightThick]           = 216;
     render_state->wall_segment_lookup[Wall_Left|Wall_Top]                                            = 217;
     render_state->wall_segment_lookup[Wall_Right|Wall_Bottom]                                        = 218;
+
+    render_state->ui_top_right = MakeV2i(platform->render_w, platform->render_h) / MakeV2i(render_state->ui_font->glyph_w,
+                                                                                           render_state->ui_font->glyph_h);
 }
 
 static inline Sprite
@@ -76,6 +79,14 @@ MakeWall(uint32_t wall_flags, Color foreground = COLOR_WHITE, Color background =
     }
 
     return result;
+}
+
+static inline V2i
+ScreenToUi(V2i p)
+{
+    p.x /= render_state->ui_font->glyph_w;
+    p.y /= render_state->ui_font->glyph_h;
+    return p;
 }
 
 static inline V2i
@@ -172,15 +183,25 @@ BlitBitmapMask(Bitmap *dest, Bitmap *source, V2i p, Color foreground, Color back
 }
 
 static inline Bitmap
-MakeBitmapView(const Bitmap &source, Rect2i rect)
+MakeBitmapView(Bitmap *source, Rect2i rect)
 {
-    rect = Intersect(rect, 0, 0, source.w, source.h);
+    rect = Intersect(rect, 0, 0, source->w, source->h);
 
     Bitmap result = {};
     result.w = GetWidth(rect);
     result.h = GetHeight(rect);
-    result.pitch = source.pitch;
-    result.data = source.data + source.pitch*rect.min.y + rect.min.x;
+    result.pitch = source->pitch;
+    result.data = source->data + source->pitch*rect.min.y + rect.min.x;
+    return result;
+}
+
+static inline Rect2i
+GetGlyphRect(Font *font, Glyph glyph)
+{
+    AssertSlow(glyph < font->glyph_count);
+    uint32_t glyph_x = font->glyph_w*(glyph % font->glyphs_per_row);
+    uint32_t glyph_y = font->glyph_h*(font->glyphs_per_col - (glyph / font->glyphs_per_row) - 1);
+    Rect2i result = MakeRect2iMinDim(glyph_x, glyph_y, font->glyph_w, font->glyph_h);
     return result;
 }
 
@@ -189,12 +210,7 @@ BlitCharMask(Bitmap *dest, Font *font, V2i p, Glyph glyph, Color foreground, Col
 {
     if (glyph < font->glyph_count)
     {
-        uint32_t glyph_x = font->glyph_w*(glyph % font->glyphs_per_row);
-        uint32_t glyph_y = font->glyph_h*(font->glyphs_per_col - (glyph / font->glyphs_per_row) - 1);
-
-        Bitmap glyph_bitmap = MakeBitmapView(font->bitmap,
-                                             MakeRect2iMinDim(glyph_x, glyph_y, font->glyph_w, font->glyph_h));
-
+        Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, GetGlyphRect(font, glyph));
         BlitBitmapMask(dest, &glyph_bitmap, p, foreground, background);
     }
 }
@@ -229,14 +245,18 @@ GetFont(DrawMode mode)
 }
 
 static inline void
-DrawTile(DrawMode mode, V2i tile_p, Sprite sprite)
+DrawTile(V2i tile_p, Sprite sprite)
 {
-    V2i screen_p = TileToScreen(mode, tile_p);
-    BlitCharMask(render_state->target, GetFont(mode), screen_p, sprite.glyph, sprite.foreground, sprite.background);
+    if (render_state->sprite_list_used < render_state->sprite_list_size)
+    {
+        SpriteToDraw *to_draw = &render_state->sprite_list[render_state->sprite_list_used++];
+        to_draw->sprite = sprite;
+        to_draw->p = TileToScreen(render_state->sprite_mode, tile_p);
+    }
 }
 
 static inline 
-void DrawRect(DrawMode mode, const Rect2i &rect, Color foreground, Color background)
+void DrawRect(const Rect2i &rect, Color foreground, Color background)
 {
     uint32_t left   = Wall_Left;
     uint32_t right  = Wall_Right;
@@ -255,20 +275,90 @@ void DrawRect(DrawMode mode, const Rect2i &rect, Color foreground, Color backgro
     }
 #endif
 
-    DrawTile(mode, rect.min, MakeWall(right|top, foreground, background));
-    DrawTile(mode, MakeV2i(rect.max.x - 1, rect.min.y), MakeWall(left|top, foreground, background));
-    DrawTile(mode, rect.max - MakeV2i(1, 1), MakeWall(left|bottom, foreground, background));
-    DrawTile(mode, MakeV2i(rect.min.x, rect.max.y - 1), MakeWall(right|bottom, foreground, background));
+    DrawTile(rect.min, MakeWall(right|top, foreground, background));
+    DrawTile(MakeV2i(rect.max.x - 1, rect.min.y), MakeWall(left|top, foreground, background));
+    DrawTile(rect.max - MakeV2i(1, 1), MakeWall(left|bottom, foreground, background));
+    DrawTile(MakeV2i(rect.min.x, rect.max.y - 1), MakeWall(right|bottom, foreground, background));
 
     for (int32_t x = rect.min.x + 1; x < rect.max.x - 1; ++x)
     {
-        DrawTile(mode, MakeV2i(x, rect.min.y), MakeWall(left|right, foreground, background));
-        DrawTile(mode, MakeV2i(x, rect.max.y - 1), MakeWall(left|right, foreground, background));
+        DrawTile(MakeV2i(x, rect.min.y), MakeWall(left|right, foreground, background));
+        DrawTile(MakeV2i(x, rect.max.y - 1), MakeWall(left|right, foreground, background));
     }
 
     for (int32_t y = rect.min.y + 1; y < rect.max.y - 1; ++y)
     {
-        DrawTile(mode, MakeV2i(rect.min.x, y), MakeWall(top|bottom, foreground, background));
-        DrawTile(mode, MakeV2i(rect.max.x - 1, y), MakeWall(top|bottom, foreground, background));
+        DrawTile(MakeV2i(rect.min.x, y), MakeWall(top|bottom, foreground, background));
+        DrawTile(MakeV2i(rect.max.x - 1, y), MakeWall(top|bottom, foreground, background));
     }
+}
+
+static void
+BeginSpriteBatch(DrawMode mode, uint32_t max_sprites)
+{
+    Assert(render_state->sprite_list_size == 0);
+
+    render_state->sprite_mode = mode;
+    render_state->sprite_list_size = max_sprites;
+    render_state->sprite_list_used = 0;
+    render_state->sprite_list = PushArray(GetTempArena(), render_state->sprite_list_size, SpriteToDraw);
+}
+
+struct TiledRenderJobParams
+{
+    Rect2i clip_rect;
+};
+
+static
+PLATFORM_JOB(TiledRenderJob)
+{
+    TiledRenderJobParams *params = (TiledRenderJobParams *)args;
+
+    Rect2i clip_rect = params->clip_rect;
+    Bitmap target = MakeBitmapView(render_state->target, clip_rect);
+
+    Font *font = GetFont(render_state->sprite_mode);
+
+    for (size_t i = 0; i < render_state->sprite_list_used; ++i)
+    {
+        SpriteToDraw *to_draw = &render_state->sprite_list[i];
+
+        V2i p = to_draw->p;
+        Rect2i glyph_rect = GetGlyphRect(font, to_draw->sprite.glyph);
+
+        if (RectanglesOverlap(clip_rect, Offset(glyph_rect, p)))
+        {
+            Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, glyph_rect);
+            BlitBitmapMask(&target, &glyph_bitmap, p, to_draw->sprite.foreground, to_draw->sprite.background);
+        }
+    }
+}
+
+static void
+EndSpriteBatch(void)
+{
+    Rect2i target_rect = MakeRect2iMinDim(0, 0, render_state->target->w, render_state->target->h);
+
+    const int tile_count_x = 4;
+    const int tile_count_y = 4;
+    TiledRenderJobParams tiles[tile_count_x*tile_count_y];
+
+    int tile_w = render_state->target->w / tile_count_x;
+    int tile_h = render_state->target->h / tile_count_y;
+
+    int next_tile = 0;
+    for (int tile_x = 0; tile_x < tile_count_x; ++tile_x)
+    for (int tile_y = 0; tile_y < tile_count_y; ++tile_y)
+    {
+        TiledRenderJobParams *params = &tiles[next_tile++];
+
+        Rect2i rect = MakeRect2iMinDim(tile_x, tile_y, tile_w, tile_h);
+        rect = Intersect(target_rect, rect);
+
+        platform->AddJob(platform->job_queue, params, TiledRenderJob);
+    }
+
+    platform->WaitForJobs(platform->job_queue);
+
+    render_state->sprite_list_size = 0;
 }

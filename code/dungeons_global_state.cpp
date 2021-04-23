@@ -1,11 +1,12 @@
 static inline void *
-CreateGlobalState_(size_t size, size_t align, void *variable_at, String guid)
+CreateGlobalState_(size_t size, size_t align, void *variable_at, void *prototype, String guid)
 {
     SimpleAssert(global_state->entry_count < MAX_GLOBAL_STATE);
 
     GlobalStateEntry *entry = &global_state->entries[global_state->entry_count++];
     entry->guid = guid;
     entry->variable_at = (void **)variable_at;
+    entry->prototype = prototype;
     entry->data_size = size;
     entry->data_align = align;
 
@@ -29,7 +30,7 @@ FindEntry(GlobalState *state, String guid)
 }
 
 static void
-RestoreGlobalState(Arena *permanent_storage)
+RestoreGlobalState(GlobalState *previous_global_state, Arena *permanent_storage)
 {
     if (!previous_global_state)
     {
@@ -47,6 +48,7 @@ RestoreGlobalState(Arena *permanent_storage)
         else
         {
             entry->data = PushAlignedSize(permanent_storage, entry->data_size, entry->data_align);
+            CopySize(entry->data_size, entry->prototype, entry->data);
         }
         *entry->variable_at = entry->data;
     }

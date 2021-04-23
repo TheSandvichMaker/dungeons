@@ -31,6 +31,29 @@ struct Win32AppCode
     AppUpdateAndRenderType *UpdateAndRender;
 };
 
+struct PlatformJobEntry
+{
+    PlatformJobProc *proc;
+    void *args;
+};
+
+struct PlatformJobQueue
+{
+    HANDLE stop;
+    HANDLE done;
+    HANDLE run;
+
+    int thread_count;
+    HANDLE *threads;
+
+    volatile uint32_t jobs_in_flight;
+    volatile uint32_t next_write;
+    volatile uint32_t next_read;
+    PlatformJobEntry jobs[256];
+
+    StaticAssert(IsPow2(ArrayCount(jobs)), "Jobs array must be a power of 2");
+};
+
 struct Win32State
 {
     Arena arena;
@@ -38,6 +61,10 @@ struct Win32State
 
     wchar_t *exe_folder;
     wchar_t *dll_path;
+    Win32AppCode app_code;
+
+    DWORD thread_local_index;
+    PlatformJobQueue job_queue;
 
     Win32AllocationHeader allocation_sentinel;
 };

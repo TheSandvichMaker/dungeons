@@ -4,6 +4,7 @@
 #include "dungeons_global_state.cpp"
 #include "dungeons_image.cpp"
 #include "dungeons_render.cpp"
+#include "dungeons_controller.cpp"
 #include "dungeons_entity.cpp"
 
 // Ryan's text controls example: https://hatebin.com/ovcwtpsfmj
@@ -78,7 +79,7 @@ LoadFontFromDisk(Arena *arena, String filename, int glyph_w, int glyph_h)
 }
 
 void
-App_UpdateAndRender(Platform *platform_)
+AppUpdateAndRender(Platform *platform_)
 {
     platform = platform_;
 
@@ -91,41 +92,30 @@ App_UpdateAndRender(Platform *platform_)
 
     if (platform->exe_reloaded)
     {
-        RestoreGlobalState(&game_state->transient_arena);
+        RestoreGlobalState(&game_state->global_state, &game_state->transient_arena);
     }
 
     if (!platform->app_initialized)
     {
-        game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font16x16.bmp"), 16, 16);
-        game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font8x16.bmp"), 8, 16);
+        game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, "font16x16.bmp"_str, 16, 16);
+        game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, "font8x16.bmp"_str, 8, 16);
         InitializeRenderState(&platform->backbuffer, &game_state->world_font, &game_state->ui_font);
 
-        AddRoom(MakeRect2iMinDim(2, 2, 8, 8));
+        AddRoom(MakeRect2iMinDim(1, 1, 16, 16));
 
         Entity *angry = AddEntity(MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1, MakeColor(255, 0, 0)));
         SetProperty(angry, EntityProperty_AngryDude);
 
-        AddEntity(MakeV2i(5, 6), MakeSprite(Glyph_Dwarf2, MakeColor(0, 255, 0)));
+        AddPlayer(MakeV2i(5, 6));
 
         platform->app_initialized = true;
     }
 
-    V2i mouse_p = MakeV2i(platform->mouse_x, platform->mouse_y);
+    HandleController();
 
     ClearBitmap(render_state->target, MakeColor(0, 0, 0));
-    UpdateAndRenderEntities();
 
-    PlatformEvent event;
-    if (PopEvent(&event, PlatformEventFilter_MouseDown))
-    {
-        if (event.mouse_button == PlatformMouseButton_Left)
-        {
-            V2i mouse_world_p = ScreenToWorld(mouse_p);
-            Entity *e = GetEntity(entity_manager->entity_grid[mouse_world_p.x][mouse_world_p.y]);
-            if (e)
-            {
-                platform->ReportError(PlatformError_Nonfatal, "That's a dude or a wall, index %d", e->handle.index);
-            }
-        }
-    }
+    BeginSpriteBatch(Draw_World, MAX_SPRITES);
+    UpdateAndRenderEntities();
+    EndSpriteBatch();
 }

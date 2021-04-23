@@ -90,7 +90,7 @@ CopySize(size_t Size, const void *SourceInit, void *DestInit)
     }
 #endif
 }
-#define CopyStruct(source, dest) (StaticAssert(sizeof(*(source)) == sizeof(*(dest)), "CopyStruct requires two structs of the same size!"), CopySize(sizeof(*(source)), source, dest))
+#define CopyStruct(source, dest) CopySize(sizeof(*(source)), source, dest)
 
 static inline uint64_t
 HashString(String string)

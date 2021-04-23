@@ -22,7 +22,7 @@
 #define AssertSlow(x) 
 #endif
 
-#define StaticAssert(condition, message) (0) /* static_assert(condition, message) */
+#define StaticAssert(condition, message) static_assert(condition, message)
 
 #define UNUSED_VARIABLE(x) (void)(x)
 
@@ -83,7 +83,7 @@ enum PlatformEventFilter_ENUM
     PlatformEventFilter_Mouse     = PlatformEventFilter_MouseUp|PlatformEventFilter_MouseDown,
     PlatformEventFilter_KeyUp     = 1 << 2,
     PlatformEventFilter_KeyDown   = 1 << 3,
-    PlatformEventFilter_Key       = PlatformEventFilter_KeyUp|PlatformEventFilter_KeyDown,
+    PlatformEventFilter_Keyboard  = PlatformEventFilter_KeyUp|PlatformEventFilter_KeyDown,
     PlatformEventFilter_Text      = 1 << 4,
     PlatformEventFilter_ANY       = 0xFFFFFFFF,
 };
@@ -148,9 +148,43 @@ enum PlatformKeyCode
     PlatformKeyCode_Insert         = 0x2D,
     PlatformKeyCode_Delete         = 0x2E,
     PlatformKeyCode_Help           = 0x2F,
-    /* 0x30 - 0x39: ascii numerals */
+    PlatformKeyCode_0              = '0',
+    PlatformKeyCode_1              = '1',
+    PlatformKeyCode_2              = '2',
+    PlatformKeyCode_3              = '3',
+    PlatformKeyCode_4              = '4',
+    PlatformKeyCode_5              = '5',
+    PlatformKeyCode_6              = '6',
+    PlatformKeyCode_7              = '7',
+    PlatformKeyCode_8              = '8',
+    PlatformKeyCode_9              = '9',
     /* 0x3A - 0x40: undefined */
-    /* 0x41 - 0x5A: ascii alphabet */
+    PlatformKeyCode_A              = 'A',
+    PlatformKeyCode_B              = 'B',
+    PlatformKeyCode_C              = 'C',
+    PlatformKeyCode_D              = 'D',
+    PlatformKeyCode_E              = 'E',
+    PlatformKeyCode_F              = 'F',
+    PlatformKeyCode_G              = 'G',
+    PlatformKeyCode_H              = 'H',
+    PlatformKeyCode_I              = 'I',
+    PlatformKeyCode_J              = 'J',
+    PlatformKeyCode_K              = 'K',
+    PlatformKeyCode_L              = 'L',
+    PlatformKeyCode_M              = 'M',
+    PlatformKeyCode_N              = 'N',
+    PlatformKeyCode_O              = 'O',
+    PlatformKeyCode_P              = 'P',
+    PlatformKeyCode_Q              = 'Q',
+    PlatformKeyCode_R              = 'R',
+    PlatformKeyCode_S              = 'S',
+    PlatformKeyCode_T              = 'T',
+    PlatformKeyCode_U              = 'U',
+    PlatformKeyCode_V              = 'V',
+    PlatformKeyCode_W              = 'W',
+    PlatformKeyCode_X              = 'X',
+    PlatformKeyCode_Y              = 'Y',
+    PlatformKeyCode_Z              = 'Z',
     PlatformKeyCode_LSys           = 0x5B,
     PlatformKeyCode_RSys           = 0x5C,
     PlatformKeyCode_Apps           = 0x5D,
@@ -223,21 +257,27 @@ enum PlatformKeyCode
     PlatformKeyCode_Play           = 0xFA,
     PlatformKeyCode_Zoom           = 0xFB,
     PlatformKeyCode_OemClear       = 0xFE,
+    PlatformKeyCode_COUNT,
 };
 
 struct PlatformEvent
 {
+    PlatformEvent *next;
+
     PlatformEventType type;
+
     bool pressed;
     bool alt_down;
     bool ctrl_down;
     bool shift_down;
+
     PlatformMouseButton mouse_button;
     PlatformKeyCode key_code;
+
     int text_length;
     char *text;
 
-    PlatformEvent *next;
+    bool consumed_;
 };
 
 enum PlatformErrorType
@@ -256,6 +296,15 @@ struct PlatformHighResTime
     uint64_t opaque;
 };
 
+struct ThreadLocalContext
+{
+    Arena temp_arena;
+};
+
+struct PlatformJobQueue;
+#define PLATFORM_JOB(name) void name(void *args)
+typedef PLATFORM_JOB(PlatformJobProc);
+
 struct Platform
 {
     bool exit_requested;
@@ -268,7 +317,6 @@ struct Platform
 
     PlatformEvent *first_event;
     PlatformEvent *last_event;
-    PlatformEvent **last_event_next;
 
     int32_t mouse_x, mouse_y, mouse_y_flipped;
     int32_t mouse_dx, mouse_dy;
@@ -277,14 +325,22 @@ struct Platform
     int32_t render_w, render_h;
     Bitmap backbuffer;
 
+    void (*DebugPrint)(char *message, ...);
     void (*ReportError)(PlatformErrorType type, char *message, ...);
 
     size_t page_size;
+    PlatformJobQueue *job_queue;
+
     void *(*AllocateMemory)(size_t size, uint32_t flags, const char *tag);
     void *(*ReserveMemory)(size_t size, uint32_t flags, const char *tag);
     void *(*CommitMemory)(void *location, size_t size);
     void (*DecommitMemory)(void *location, size_t size);
     void (*DeallocateMemory)(void *memory);
+
+    ThreadLocalContext *(*GetThreadLocalContext)(void);
+
+    void (*AddJob)(PlatformJobQueue *queue, void *arg, PlatformJobProc *proc);
+    void (*WaitForJobs)(PlatformJobQueue *queue);
 
     Buffer (*ReadFile)(Arena *arena, String filename);
 
@@ -294,33 +350,60 @@ struct Platform
 
 static Platform *platform;
 
-static inline bool
-PopEvent(PlatformEvent *out_event, PlatformEventFilter filter = PlatformEventFilter_ANY)
+static inline Arena *
+GetTempArena(void)
 {
-    // NOTE: As an iterator, this does a linear search from the head every time, so it's not very efficient,
-    // but it has the benefit of requiring no iterator setup at all, and is still definitely fast enough.
+    ThreadLocalContext *context = platform->GetThreadLocalContext();
+    Arena *result = &context->temp_arena;
+    return result;
+}
+
+static inline void
+LeaveUnhandled(PlatformEvent *event)
+{
+    event->consumed_ = false;
+}
+
+static inline PlatformEvent *
+PopEvent(PlatformEventFilter filter = PlatformEventFilter_ANY)
+{
+    PlatformEvent *it = platform->first_event;
+    while (it->consumed_ || MatchFilter(it->type, filter))
+    {
+        it = it->next;
+    }
+    if (it)
+    {
+        it->consumed_ = true;
+    }
+    return it;
+}
+
+static inline bool
+NextEvent(PlatformEvent **out_event, PlatformEventFilter filter = PlatformEventFilter_ANY)
+{
     bool result = false;
 
-    PlatformEvent **prev_at  = &platform->first_event;
-    PlatformEvent **event_at = &platform->first_event;
-    while (*event_at)
+    PlatformEvent *it = *out_event;
+    if (!it)
     {
-        PlatformEvent *event = *event_at;
-        if (MatchFilter(event->type, filter))
+        it = platform->first_event;
+    }
+    else
+    {
+        it = it->next;
+    }
+
+    while (it)
+    {
+        if (!it->consumed_ && MatchFilter(it->type, filter))
         {
             result = true;
-            *out_event = *event;
-
-            *event_at = event->next;
-            if (!event->next)
-            {
-                platform->last_event = *prev_at;
-            }
-
+            it->consumed_ = true;
+            *out_event = it;
             break;
         }
-        prev_at  = event_at;
-        event_at = &event->next;
+        it = it->next;
     }
 
     return result;
@@ -328,6 +411,6 @@ PopEvent(PlatformEvent *out_event, PlatformEventFilter filter = PlatformEventFil
 
 #define APP_UPDATE_AND_RENDER(name) void name(Platform *platform)
 typedef APP_UPDATE_AND_RENDER(AppUpdateAndRenderType);
-extern "C" DUNGEONS_EXPORT APP_UPDATE_AND_RENDER(App_UpdateAndRender);
+extern "C" DUNGEONS_EXPORT APP_UPDATE_AND_RENDER(AppUpdateAndRender);
 
 #endif /* DUNGEONS_PLATFORM_HPP */
