@@ -1056,9 +1056,9 @@ GrowToContain(Rect2i a, V2i p)
 DUNGEONS_INLINE bool
 RectanglesOverlap(Rect2i a, Rect2i b)
 {
-    bool result = !(a.min.x >= b.max.x ||
+    bool result = !(b.max.x <= a.min.x ||
                     b.min.x >= a.max.x ||
-                    a.min.y >= b.max.y ||
+                    b.max.y <= a.min.y ||
                     b.min.y >= a.max.y);
     return result;
 }

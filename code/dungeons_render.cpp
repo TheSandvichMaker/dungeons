@@ -326,10 +326,11 @@ PLATFORM_JOB(TiledRenderJob)
         V2i p = to_draw->p;
         Rect2i glyph_rect = GetGlyphRect(font, to_draw->sprite.glyph);
 
-        if (RectanglesOverlap(clip_rect, Offset(glyph_rect, p)))
+        if (RectanglesOverlap(clip_rect, MakeRect2iMinDim(p, MakeV2i(font->glyph_w, font->glyph_h))))
         {
+            V2i rel_p = p - clip_rect.min;
             Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, glyph_rect);
-            BlitBitmapMask(&target, &glyph_bitmap, p, to_draw->sprite.foreground, to_draw->sprite.background);
+            BlitBitmapMask(&target, &glyph_bitmap, rel_p, to_draw->sprite.foreground, to_draw->sprite.background);
         }
     }
 }
@@ -339,8 +340,8 @@ EndSpriteBatch(void)
 {
     Rect2i target_rect = MakeRect2iMinDim(0, 0, render_state->target->w, render_state->target->h);
 
-    const int tile_count_x = 4;
-    const int tile_count_y = 4;
+    const int tile_count_x = 8;
+    const int tile_count_y = 8;
     TiledRenderJobParams tiles[tile_count_x*tile_count_y];
 
     int tile_w = render_state->target->w / tile_count_x;
@@ -352,8 +353,10 @@ EndSpriteBatch(void)
     {
         TiledRenderJobParams *params = &tiles[next_tile++];
 
-        Rect2i rect = MakeRect2iMinDim(tile_x, tile_y, tile_w, tile_h);
+        Rect2i rect = MakeRect2iMinDim(tile_x*tile_w, tile_y*tile_h, tile_w, tile_h);
         rect = Intersect(target_rect, rect);
+
+        params->clip_rect = rect;
 
         platform->AddJob(platform->job_queue, params, TiledRenderJob);
     }

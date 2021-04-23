@@ -419,7 +419,7 @@ PlayerAct(void)
         Entity *target = TraceLine(player->p, controller->world_mouse_p, MakeSprite('x', MakeColor(0, 255, 0), MakeColor(0, 127, 0)));
         if (target == entity_at_mouse && Pressed(controller->interact))
         {
-            platform->DebugPrint("Pow");
+            platform->DebugPrint("Pow\n");
             return true;
         }
     }

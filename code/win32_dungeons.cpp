@@ -683,21 +683,27 @@ Win32_ThreadProc(LPVOID userdata)
 
     for (;;)
     {
-        HANDLE handles[] = { queue->stop, queue->run };
-        if (WaitForMultipleObjects(2, handles, FALSE, INFINITE) == WAIT_OBJECT_0)
+        uint32_t entry_index = queue->next_read;
+        if (entry_index != queue->next_write)
         {
-            return 0;
+            uint32_t next_entry_index = entry_index + 1;
+            uint32_t exchanged_index = InterlockedCompareExchange(&queue->next_read, next_entry_index, entry_index);
+
+            if (entry_index == exchanged_index)
+            {
+                PlatformJobEntry *job = &queue->jobs[entry_index % ArrayCount(queue->jobs)];
+                job->proc(job->args);
+
+                uint32_t jobs_count = InterlockedDecrement(&queue->jobs_in_flight);
+                if (jobs_count == 0)
+                {
+                    SetEvent(queue->done);
+                }
+            }
         }
-
-        uint32_t entry_index = InterlockedIncrement(&queue->next_read) - 1;
-
-        PlatformJobEntry *job = &queue->jobs[entry_index % ArrayCount(queue->jobs)];
-        job->proc(job->args);
-
-        uint32_t jobs_count = InterlockedDecrement(&queue->jobs_in_flight);
-        if (jobs_count == 0)
+        else
         {
-            SetEvent(queue->done);
+            WaitForSingleObject(queue->run, INFINITE);
         }
     }
 }
