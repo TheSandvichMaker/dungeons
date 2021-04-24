@@ -116,4 +116,25 @@ HashString(String string)
 
 #define CopyArray(Count, Source, Dest) CopySize(sizeof(*(Source))*Count, Source, Dest)
 
+static inline uint64_t
+BeginFnv1a(void)
+{
+    uint64_t hash = 0xcbf29ce484222325ull;
+    return hash;
+}
+
+static inline uint64_t
+MixFnv1a(size_t hash, size_t len, const void *data_init)
+{
+    const char *data = (const char *)data_init;
+
+    for (size_t i = 0; i < len; ++i)
+    {
+        hash ^= data[i];
+        hash *= 0x100000001b3ull;
+    }
+
+    return hash;
+}
+
 #endif /* DUNGEONS_SHARED_HPP */

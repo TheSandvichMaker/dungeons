@@ -1,9 +1,9 @@
 #ifndef DUNGEONS_RENDER_HPP
 #define DUNGEONS_RENDER_HPP
 
-#define DIRTY_RECT_COUNT_X 8
-#define DIRTY_RECT_COUNT_Y 8
-#define DIRTY_RECT_COUNT (DIRTY_RECT_COUNT_X*DIRTY_RECT_COUNT_Y)
+#define RECT_HASH_COUNT_X 8
+#define RECT_HASH_COUNT_Y 8
+#define RECT_HASH_COUNT (RECT_HASH_COUNT_X*RECT_HASH_COUNT_Y)
 
 // NOTE: These are for code page 437 fonts
 // https://en.wikipedia.org/wiki/Code_page_437#Character_set
@@ -138,7 +138,8 @@ struct TileMap
 {
     int w, h;
     Sprite *sprites;
-    bool *dirty_rects;
+    uint64_t *rect_hashes;
+    uint64_t *prev_rect_hashes;
 };
 
 #define MAX_SPRITES (1 << 16)

@@ -25,7 +25,8 @@ InitializeRenderState(Arena *arena, Bitmap *target, Font *world_font, Font *ui_f
         map.w = (pixel_w + font->glyph_w - 1) / font->glyph_w;
         map.h = (pixel_h + font->glyph_h - 1) / font->glyph_h;
         map.sprites = PushArray(arena, map.w*map.h, Sprite);
-        map.dirty_rects = PushArray(arena, map.w*map.h / DIRTY_RECT_COUNT, bool);
+        map.rect_hashes = PushArray(arena, RECT_HASH_COUNT, uint64_t);
+        map.prev_rect_hashes = PushArray(arena, RECT_HASH_COUNT, uint64_t);
         return map;
     };
 
@@ -282,7 +283,20 @@ DrawTile(V2i tile_p, Sprite sprite)
 
     if (tile_p.x > 0 && tile_p.y > 0 && tile_p.x < map->w && tile_p.y < map->h)
     {
-        map->dirty_rects[tile_p.y*map->w / DIRTY_RECT_COUNT_Y + tile_p.x / DIRTY_RECT_COUNT_X] = true;
+        struct { V2i p; Sprite sprite; } hash_data = { tile_p, sprite };
+
+        int dirty_rect_w = map->w / RECT_HASH_COUNT_X;
+        int dirty_rect_h = map->h / RECT_HASH_COUNT_Y;
+
+        int dirty_rect_x = tile_p.x / dirty_rect_w;
+        int dirty_rect_y = tile_p.y / dirty_rect_h;
+
+        size_t dirty_rect_index = dirty_rect_y*RECT_HASH_COUNT_X + dirty_rect_x;
+
+        uint64_t hash = map->rect_hashes[dirty_rect_index];
+        hash = MixFnv1a(hash, sizeof(hash_data), &hash_data);
+        map->rect_hashes[dirty_rect_index] = hash;
+
         map->sprites[tile_p.y*map->w + tile_p.x] = sprite;
     }
 }
@@ -333,7 +347,10 @@ BeginRender(DrawMode mode)
     auto ClearMap = [](TileMap *map)
     {
         ZeroArray(map->w*map->h, map->sprites);
-        ZeroArray(map->w*map->h / DIRTY_RECT_COUNT, map->dirty_rects);
+        for (size_t i = 0; i < RECT_HASH_COUNT; ++i)
+        {
+            map->rect_hashes[i] = BeginFnv1a();
+        }
     };
 
     ClearMap(&render_state->ui_tile_map);
@@ -380,8 +397,8 @@ RenderTileMap(TileMap *map)
     Rect2i pixel_target_bounds = MakeRect2iMinDim(0, 0, render_state->target->w, render_state->target->h);
     Rect2i target_bounds = MakeRect2iMinDim(0, 0, map->w, map->h);
 
-    const int tile_count_x = DIRTY_RECT_COUNT_X;
-    const int tile_count_y = DIRTY_RECT_COUNT_Y;
+    const int tile_count_x = RECT_HASH_COUNT_X;
+    const int tile_count_y = RECT_HASH_COUNT_Y;
     TiledRenderJobParams tiles[tile_count_x*tile_count_y];
 
     int pixel_tile_w = render_state->target->w / tile_count_x;
@@ -391,11 +408,12 @@ RenderTileMap(TileMap *map)
     int tile_h = map->h / tile_count_y;
 
     int next_tile = 0;
-    for (int tile_x = 0; tile_x < tile_count_x; ++tile_x)
     for (int tile_y = 0; tile_y < tile_count_y; ++tile_y)
+    for (int tile_x = 0; tile_x < tile_count_x; ++tile_x)
     {
-        bool is_dirty = &map->dirty_rects[next_tile];
-        if (!is_dirty)
+        uint64_t this_rect_hash = map->rect_hashes[tile_y*tile_count_x + tile_x];
+        uint64_t prev_rect_hash = map->prev_rect_hashes[tile_y*tile_count_x + tile_x];
+        if (this_rect_hash == prev_rect_hash)
         {
             continue;
         }
@@ -420,6 +438,8 @@ RenderTileMap(TileMap *map)
     }
 
     platform->WaitForJobs(platform->job_queue);
+
+    Swap(map->rect_hashes, map->prev_rect_hashes);
 }
 
 static void
