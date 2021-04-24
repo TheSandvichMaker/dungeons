@@ -97,9 +97,12 @@ MatchFilter(PlatformEventType type, PlatformEventFilter filter)
 
 enum PlatformMouseButton
 {
+    PlatformMouseButton_None,
+
     PlatformMouseButton_Left,
     PlatformMouseButton_Middle,
     PlatformMouseButton_Right,
+
     PlatformMouseButton_COUNT,
 };
 
@@ -298,7 +301,11 @@ struct PlatformHighResTime
 
 struct ThreadLocalContext
 {
-    Arena temp_arena;
+    Arena *temp_arena;
+    Arena *prev_temp_arena;
+
+    Arena temp_arena_1_;
+    Arena temp_arena_2_;
 };
 
 struct PlatformJobQueue;
@@ -354,7 +361,7 @@ static inline Arena *
 GetTempArena(void)
 {
     ThreadLocalContext *context = platform->GetThreadLocalContext();
-    Arena *result = &context->temp_arena;
+    Arena *result = context->temp_arena;
     return result;
 }
 

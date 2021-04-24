@@ -16,6 +16,7 @@ enum EntityPropertyKind
     EntityProperty_Alive,
     EntityProperty_Dying,
     EntityProperty_PlayerControlled,
+    EntityProperty_Invulnerable,
     EntityProperty_AngryDude,
     EntityProperty_COUNT,
 };
@@ -72,10 +73,6 @@ struct EntityManager
 {
     Arena turn_arena;
     float turn_timer;
-
-    bool doing_action;
-    Entity *current_actor;
-    Action current_action;
 
     uint32_t entity_count;
 

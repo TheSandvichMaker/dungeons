@@ -97,6 +97,7 @@ struct Sprite
     Color foreground;
     Color background;
     Glyph glyph;
+    V2i offset_p;
 };
 
 static inline Sprite

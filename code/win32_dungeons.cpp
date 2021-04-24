@@ -652,6 +652,9 @@ Win32_InitializeTLSForThread(ThreadLocalContext *context)
     {
         Win32_ExitWithLastError();
     }
+
+    context->temp_arena      = &context->temp_arena_1_;
+    context->prev_temp_arena = &context->temp_arena_2_;
 }
 
 static ThreadLocalContext *
@@ -715,7 +718,7 @@ Win32_InitializeJobQueue(PlatformJobQueue *queue, int thread_count)
     queue->done = CreateEventA(NULL, TRUE, FALSE, NULL);
     queue->run = CreateSemaphoreA(NULL, 0, thread_count, NULL);
 
-    ThreadLocalContext *tls = PushArray(&win32_state.arena, thread_count, ThreadLocalContext);
+    queue->tls = PushArray(&win32_state.arena, thread_count, ThreadLocalContext);
 
     queue->thread_count = thread_count;
     queue->threads = PushArray(&win32_state.arena, thread_count, HANDLE);
@@ -724,7 +727,7 @@ Win32_InitializeJobQueue(PlatformJobQueue *queue, int thread_count)
     for (int i = 0; i < thread_count; ++i)
     {
         Win32ThreadArgs args = {};
-        args.context = &tls[i];
+        args.context = &queue->tls[i];
         args.queue = queue;
         args.ready = ready;
 
@@ -851,8 +854,20 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     {
         Clear(&win32_state.temp_arena);
 
-        Arena *thread_local_temp = GetTempArena();
-        Clear(thread_local_temp);
+        {
+            ThreadLocalContext *context = &tls_context;
+            Swap(context->temp_arena, context->prev_temp_arena);
+            Clear(context->temp_arena);
+        }
+
+        PlatformJobQueue *queue = platform->job_queue;
+        Assert(queue->jobs_in_flight == 0);
+        for (size_t i = 0; i < queue->thread_count; ++i)
+        {
+            ThreadLocalContext *context = &queue->tls[i];
+            Swap(context->temp_arena, context->prev_temp_arena);
+            Clear(context->temp_arena);
+        }
 
         bool exit_requested = false;
         platform->first_event = platform->last_event = nullptr;

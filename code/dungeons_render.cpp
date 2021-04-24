@@ -389,11 +389,7 @@ PLATFORM_JOB(TiledRenderJob)
         {
             Rect2i glyph_rect = GetGlyphRect(font, sprite->glyph);
             Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, glyph_rect);
-            BlitBitmapMask(render_state->target, &glyph_bitmap, p, sprite->foreground, sprite->background);
-        }
-        else
-        {
-            BlitRect(render_state->target, MakeRect2iMinDim(p.x, p.y, font->glyph_w, font->glyph_h), COLOR_BLACK);
+            BlitBitmapMask(render_state->target, &glyph_bitmap, p + sprite->offset_p, sprite->foreground, sprite->background);
         }
     }
 }
@@ -450,5 +446,7 @@ RenderTileMap(TileMap *map, Font *font)
 static void
 EndRender(void)
 {
-    RenderTileMap(CurrentTileMap(), CurrentFont());
+    TileMap *map = CurrentTileMap();
+    Font *font = CurrentFont();
+    RenderTileMap(map, font);
 }

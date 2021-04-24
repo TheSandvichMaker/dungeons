@@ -6,6 +6,10 @@ HandleButton(Button *button, bool pressed)
         button->half_transition_count += 1;
         button->ended_down = pressed;
     }
+    else
+    {
+        button->repeat_count += 1;
+    }
 }
 
 static inline void
@@ -18,6 +22,7 @@ HandleController(void)
     for (Button *button = FirstButton(); button < LastButton(); ++button)
     {
         button->half_transition_count = 0;
+        button->repeat_count = 0;
     }
 
     for (PlatformEvent *event = nullptr; NextEvent(&event, PlatformEventFilter_Mouse|PlatformEventFilter_Keyboard);)
@@ -45,6 +50,14 @@ HandleController(void)
                     LeaveUnhandled(event);
                 } break;
             }
+        }
+    }
+
+    for (Button *button = FirstButton(); button < LastButton(); ++button)
+    {
+        if (Pressed(*button))
+        {
+            platform->DebugPrint("Button pressed: %s\n", button->name);
         }
     }
 }

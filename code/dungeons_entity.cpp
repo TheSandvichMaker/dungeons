@@ -206,14 +206,18 @@ FindClosestEntity(V2i p, Entity *filter = nullptr)
 static inline bool
 DamageEntity(Entity *e, int amount)
 {
-    e->health -= amount;
-    e->flash_timer = 0.2f;
-    e->flash_color = MakeColor(255, 0, 0);
-    if (e->health <= 0)
+    if (!HasProperty(e, EntityProperty_Dying))
     {
-        SetProperty(e, EntityProperty_Dying);
+        e->health -= amount;
+        e->flash_timer = 0.2f;
+        e->flash_color = MakeColor(255, 0, 0);
+        if (e->health <= 0)
+        {
+            SetProperty(e, EntityProperty_Dying);
+        }
+        return true;
     }
-    return true;
+    return false;
 }
 
 static inline Entity *
@@ -240,7 +244,7 @@ TraceLine(V2i start, V2i end, Sprite sprite = MakeSprite(0))
     {
         V2i p = MakeV2i(x, y);
 
-        if (p != start)
+        if (!AreEqual(p, start))
         {
             Entity *entity_at = GetEntityAt(p);
             if (entity_at)
@@ -327,7 +331,7 @@ FindPath(Arena *arena, V2i start, V2i target)
         PathNode *top_node = queue;
         queue = queue->next;
 
-        if (top_node->p == target)
+        if (AreEqual(top_node->p, target))
         {
             target_node = top_node;
             break;
@@ -366,7 +370,7 @@ FindPath(Arena *arena, V2i start, V2i target)
 
                 node_count += 1;
 
-                if (p == target)
+                if (AreEqual(p, target))
                 {
                     target_node = node;
                 }
@@ -395,16 +399,6 @@ FindPath(Arena *arena, V2i start, V2i target)
 }
 
 static inline bool
-CommitAction(Entity *actor, Action action)
-{
-    Assert(!entity_manager->doing_action);
-    entity_manager->doing_action = true;
-    entity_manager->current_actor = actor;
-    entity_manager->current_action = action;
-    return true;
-}
-
-static inline bool
 PlayerAct(void)
 {
     Entity *player = entity_manager->player;
@@ -413,52 +407,31 @@ PlayerAct(void)
         return true;
     }
 
-    Entity *entity_at_mouse = GetEntityAt(controller->world_mouse_p);
-    if (HasProperty(entity_at_mouse, EntityProperty_AngryDude))
+    V2i move = MakeV2i(0, 0);
+    if (Triggered(controller->left))  move.x -= 1;
+    if (Triggered(controller->right)) move.x += 1;
+    if (Triggered(controller->up))    move.y += 1;
+    if (Triggered(controller->down))  move.y -= 1;
+
+    if (!AreEqual(move, MakeV2i(0, 0)))
     {
-        Entity *target = TraceLine(player->p, controller->world_mouse_p, MakeSprite('x', MakeColor(0, 255, 0), MakeColor(0, 127, 0)));
-        if (target == entity_at_mouse && Pressed(controller->interact))
+        V2i move_p = player->p + move;
+        Entity *e_at_move_p = GetEntityAt(move_p);
+        if (e_at_move_p)
         {
-            platform->DebugPrint("Pow\n");
-            return true;
+            if (HasProperty(e_at_move_p, EntityProperty_Invulnerable))
+            {
+                // blocked
+            }
+            else
+            {
+                DamageEntity(e_at_move_p, 1);
+                return true;
+            }
         }
-    }
-
-    Path path = FindPath(&entity_manager->turn_arena, player->p, controller->world_mouse_p);
-    for (size_t i = 1; i < path.length; ++i)
-    {
-        DrawTile(path.positions[i], MakeSprite('p', MakeColor(255, 0, 255), MakeColor(127, 0, 127)));
-    }
-
-    if (path.length > 0 && Pressed(controller->interact))
-    {
-        Action action = {};
-        action.kind = Action_FollowPath;
-        action.path = path;
-        if (CommitAction(player, action))
+        else
         {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static inline bool
-DoCurrentAction(void)
-{
-    Action *action = &entity_manager->current_action;
-    Entity *e = entity_manager->current_actor;
-
-    if (action->kind == Action_FollowPath)
-    {
-        Path *path = &action->path;
-        if (path->length > 0)
-        {
-            V2i p = path->positions[0];
-            path->positions += 1;
-            path->length -= 1;
-            MoveEntity(e, p);
+            MoveEntity(player, move_p);
             return true;
         }
     }
@@ -471,22 +444,10 @@ UpdateAndRenderEntities(void)
 {
     if (entity_manager->turn_timer <= 0.0f)
     {
-        if (entity_manager->doing_action)
+        if (PlayerAct())
         {
-            if (DoCurrentAction())
-            {
-            }
-            else
-            {
-                entity_manager->doing_action = false;
-                Clear(&entity_manager->turn_arena);
-            }
-            entity_manager->turn_timer += 0.25f;
-        }
-        else
-        {
-            Clear(&entity_manager->turn_arena);
-            PlayerAct();
+            entity_manager->turn_timer += 0.05f;
+            // simulate everybody else
         }
     }
     else
@@ -497,18 +458,17 @@ UpdateAndRenderEntities(void)
     for (Entity *e = nullptr; NextEntity(&e);)
     {
         Sprite sprite = e->sprite;
-        if (e->flash_timer > 0.0f)
+        if (e->flash_timer >= 0.0f)
         {
             sprite.foreground = e->flash_color;
             e->flash_timer -= platform->dt;
         }
-        else
+
+        if (e->flash_timer <= 0.0f && HasProperty(e, EntityProperty_Dying))
         {
-            if (HasProperty(e, EntityProperty_Dying))
-            {
-                KillEntity(e);
-            }
+            KillEntity(e);
         }
+
         DrawTile(e->p, sprite);
     }
 }

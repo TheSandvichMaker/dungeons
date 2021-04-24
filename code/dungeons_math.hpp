@@ -224,21 +224,14 @@ IMPLEMENT_V4_SCALAR_OPERATORS(V4i, int32_t, /)
 IMPLEMENT_V4_VECTOR_OPERATORS(V4i, int32_t, *)
 IMPLEMENT_V4_VECTOR_OPERATORS(V4i, int32_t, /)
 
+#endif
+
 DUNGEONS_INLINE bool
-operator == (V2i a, V2i b)
+AreEqual(V2i a, V2i b)
 {
     return (a.x == b.x &&
             a.y == b.y);
 }
-
-DUNGEONS_INLINE bool
-operator != (V2i a, V2i b)
-{
-    return (a.x != b.x ||
-            a.y != b.y);
-}
-
-#endif
 
 DUNGEONS_INLINE float Square(float x) { return x*x; }
 DUNGEONS_INLINE float SquareRoot(float x) { return sqrtf(x); }

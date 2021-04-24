@@ -5,6 +5,7 @@ struct Button
 {
     const char *name;
     uint32_t half_transition_count;
+    uint32_t repeat_count;
     bool ended_down;
 };
 
@@ -13,6 +14,18 @@ Pressed(Button button)
 {
     return (button.half_transition_count >= 2 ||
             (button.half_transition_count == 1 && button.ended_down));
+}
+
+static inline bool
+Repeated(Button button)
+{
+    return (button.repeat_count > 0);
+}
+
+static inline bool
+Triggered(Button button)
+{
+    return Pressed(button) || Repeated(button);
 }
 
 static inline bool

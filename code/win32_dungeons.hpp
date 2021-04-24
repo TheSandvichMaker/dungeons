@@ -45,6 +45,7 @@ struct PlatformJobQueue
 
     int thread_count;
     HANDLE *threads;
+    ThreadLocalContext *tls;
 
     volatile uint32_t jobs_in_flight;
     volatile uint32_t next_write;
