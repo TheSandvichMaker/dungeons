@@ -142,8 +142,6 @@ struct TileMap
     uint64_t *prev_rect_hashes;
 };
 
-#define MAX_SPRITES (1 << 16)
-
 struct RenderState
 {
     Bitmap *target;

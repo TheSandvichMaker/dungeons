@@ -253,15 +253,32 @@ TileToScreen(DrawMode mode, V2i p)
     return p;
 }
 
-static inline Font *
-GetFont(DrawMode mode)
+static inline TileMap *
+CurrentTileMap(void)
 {
-    if (mode == Draw_World)
+    TileMap *map = nullptr;
+    if (render_state->sprite_mode == Draw_World)
+    {
+        map = &render_state->world_tile_map;
+    }
+    else
+    {
+        Assert(render_state->sprite_mode == Draw_Ui);
+        map = &render_state->ui_tile_map;
+    }
+    return map;
+}
+
+static inline Font *
+CurrentFont(void)
+{
+    if (render_state->sprite_mode == Draw_World)
     {
         return render_state->world_font;
     }
     else
     {
+        Assert(render_state->sprite_mode == Draw_Ui);
         return render_state->ui_font;
     }
 }
@@ -269,16 +286,10 @@ GetFont(DrawMode mode)
 static inline void
 DrawTile(V2i tile_p, Sprite sprite)
 {
-    TileMap *map = nullptr;
+    TileMap *map = CurrentTileMap();
     if (render_state->sprite_mode == Draw_World)
     {
-        map = &render_state->world_tile_map;
         tile_p -= render_state->camera_bottom_left;
-    }
-    else
-    {
-        Assert(render_state->sprite_mode == Draw_Ui);
-        map = &render_state->ui_tile_map;
     }
 
     if (tile_p.x > 0 && tile_p.y > 0 && tile_p.x < map->w && tile_p.y < map->h)
@@ -343,23 +354,19 @@ static void
 BeginRender(DrawMode mode)
 {
     render_state->sprite_mode = mode;
+    TileMap *map = CurrentTileMap();
 
-    auto ClearMap = [](TileMap *map)
+    ZeroArray(map->w*map->h, map->sprites);
+    for (size_t i = 0; i < RECT_HASH_COUNT; ++i)
     {
-        ZeroArray(map->w*map->h, map->sprites);
-        for (size_t i = 0; i < RECT_HASH_COUNT; ++i)
-        {
-            map->rect_hashes[i] = BeginFnv1a();
-        }
-    };
-
-    ClearMap(&render_state->ui_tile_map);
-    ClearMap(&render_state->world_tile_map);
+        map->rect_hashes[i] = BeginFnv1a();
+    }
 }
 
 struct TiledRenderJobParams
 {
     TileMap *map;
+    Font *font;
     Rect2i clip_rect;
 };
 
@@ -371,7 +378,7 @@ PLATFORM_JOB(TiledRenderJob)
     TileMap *map = params->map;
     Rect2i clip_rect = params->clip_rect;
 
-    Font *font = GetFont(render_state->sprite_mode);
+    Font *font = params->font;
 
     for (int y = clip_rect.min.y; y < clip_rect.max.y; ++y)
     for (int x = clip_rect.min.x; x < clip_rect.max.x; ++x)
@@ -392,7 +399,7 @@ PLATFORM_JOB(TiledRenderJob)
 }
 
 static void
-RenderTileMap(TileMap *map)
+RenderTileMap(TileMap *map, Font *font)
 {
     Rect2i pixel_target_bounds = MakeRect2iMinDim(0, 0, render_state->target->w, render_state->target->h);
     Rect2i target_bounds = MakeRect2iMinDim(0, 0, map->w, map->h);
@@ -401,13 +408,12 @@ RenderTileMap(TileMap *map)
     const int tile_count_y = RECT_HASH_COUNT_Y;
     TiledRenderJobParams tiles[tile_count_x*tile_count_y];
 
-    int pixel_tile_w = render_state->target->w / tile_count_x;
-    int pixel_tile_h = render_state->target->h / tile_count_y;
-
     int tile_w = map->w / tile_count_x;
     int tile_h = map->h / tile_count_y;
 
-    int next_tile = 0;
+    int pixel_tile_w = tile_w*font->glyph_w;
+    int pixel_tile_h = tile_h*font->glyph_h;
+
     for (int tile_y = 0; tile_y < tile_count_y; ++tile_y)
     for (int tile_x = 0; tile_x < tile_count_x; ++tile_x)
     {
@@ -418,21 +424,20 @@ RenderTileMap(TileMap *map)
             continue;
         }
 
-        Rect2i pixel_tile = MakeRect2iMinDim(tile_x*pixel_tile_w,
-                                             tile_y*pixel_tile_h,
-                                             pixel_tile_w,
-                                             pixel_tile_h);
-        pixel_tile = Intersect(pixel_tile, pixel_target_bounds); 
-        Bitmap target_view = MakeBitmapView(render_state->target, pixel_tile);
-        ClearBitmap(&target_view, COLOR_BLACK);
+        Rect2i pixels_to_clear_region = MakeRect2iMinDim(tile_x*pixel_tile_w, tile_y*pixel_tile_h, pixel_tile_w, pixel_tile_h);
+        pixels_to_clear_region = Intersect(pixels_to_clear_region, pixel_target_bounds); 
 
-        TiledRenderJobParams *params = &tiles[next_tile++];
+        Bitmap pixels_to_clear = MakeBitmapView(render_state->target, pixels_to_clear_region);
+        ClearBitmap(&pixels_to_clear, COLOR_BLACK);
+
+        TiledRenderJobParams *params = &tiles[tile_y*tile_count_x + tile_x];
         params->map = map;
+        params->font = font;
 
-        Rect2i rect = MakeRect2iMinDim(tile_x*tile_w, tile_y*tile_h, tile_w, tile_h);
-        rect = Intersect(rect, target_bounds);
+        Rect2i clip_rect = MakeRect2iMinDim(tile_x*tile_w, tile_y*tile_h, tile_w, tile_h);
+        clip_rect = Intersect(clip_rect, target_bounds);
 
-        params->clip_rect = rect;
+        params->clip_rect = clip_rect;
 
         platform->AddJob(platform->job_queue, params, TiledRenderJob);
     }
@@ -445,6 +450,5 @@ RenderTileMap(TileMap *map)
 static void
 EndRender(void)
 {
-    RenderTileMap(&render_state->ui_tile_map);
-    RenderTileMap(&render_state->world_tile_map);
+    RenderTileMap(CurrentTileMap(), CurrentFont());
 }
