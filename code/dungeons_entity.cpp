@@ -124,9 +124,17 @@ AddEntity(V2i p, Sprite sprite)
 }
 
 static inline Entity *
+AddWall(V2i p)
+{
+    Entity *e = AddEntity(p, MakeSprite(Glyph_Tone50));
+    SetProperty(e, EntityProperty_Invulnerable);
+    return e;
+}
+
+static inline Entity *
 AddPlayer(V2i p)
 {
-    Entity *e = AddEntity(p, MakeSprite(Glyph_Dwarf2));
+    Entity *e = AddEntity(p, MakeSprite(Glyph_Dwarf2, MakeColor(255, 255, 0)));
     SetProperty(e, EntityProperty_PlayerControlled);
 
     Assert(!entity_manager->player);
@@ -476,15 +484,14 @@ UpdateAndRenderEntities(void)
 static inline void
 AddRoom(Rect2i rect)
 {
-    Sprite sprite = MakeSprite(Glyph_Tone50);
     for (int x = rect.min.x; x <= rect.max.x; ++x)
     {
-        AddEntity(MakeV2i(x, rect.min.y), sprite);
-        AddEntity(MakeV2i(x, rect.max.y), sprite);
+        AddWall(MakeV2i(x, rect.min.y));
+        AddWall(MakeV2i(x, rect.max.y));
     }
     for (int y = rect.min.y + 1; y <= rect.max.y - 1; ++y)
     {
-        AddEntity(MakeV2i(rect.min.x, y), sprite);
-        AddEntity(MakeV2i(rect.max.x, y), sprite);
+        AddWall(MakeV2i(rect.min.x, y));
+        AddWall(MakeV2i(rect.max.x, y));
     }
 }

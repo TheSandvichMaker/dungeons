@@ -6,6 +6,30 @@
 #include <xmmintrin.h>
 #include <wmmintrin.h>
 
+static inline uint32_t
+RotateLeft(uint32_t value, int32_t amount)
+{
+#if COMPILER_MSVC
+    uint32_t result = _rotl(value, amount);
+#else
+    amount &= 31;
+    uint32_t result = ((value <<  amount) | (value >> (32 - amount)));
+#endif
+
+    return result;
+}
+
+static inline uint32_t
+RotateRight(uint32_t value, int32_t amount)
+{
+#if COMPILER_MSVC
+    uint32_t result = _rotr(value, amount);
+#else
+    amount &= 31;
+    uint32_t result = ((value >>  amount) | (value << (32 - amount)));
+#endif
+    return result;
+}
 struct BitScanResult
 {
     uint32_t found;

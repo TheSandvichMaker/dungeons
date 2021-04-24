@@ -862,7 +862,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
 
         PlatformJobQueue *queue = platform->job_queue;
         Assert(queue->jobs_in_flight == 0);
-        for (size_t i = 0; i < queue->thread_count; ++i)
+        for (int i = 0; i < queue->thread_count; ++i)
         {
             ThreadLocalContext *context = &queue->tls[i];
             Swap(context->temp_arena, context->prev_temp_arena);
@@ -987,6 +987,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
         {
             app_code->UpdateAndRender(platform);
             platform->exe_reloaded = false;
+
+            Assert(platform->job_queue->jobs_in_flight == 0);
         }
         Win32_DisplayOffscreenBuffer(window, buffer);
 

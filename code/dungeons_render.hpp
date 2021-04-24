@@ -124,6 +124,7 @@ enum WallSegment
 
 enum DrawMode
 {
+    Draw_None,
     Draw_World,
     Draw_Ui,
 };
@@ -173,9 +174,6 @@ struct RenderState
 
     DrawMode sprite_mode;
     SpriteLayer world_layer;
-
-    DirtyRects *dirty_rects;
-    DirtyRects *prev_dirty_rects;
 };
 
 GLOBAL_STATE(RenderState, render_state);

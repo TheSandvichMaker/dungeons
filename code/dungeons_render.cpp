@@ -264,6 +264,7 @@ CurrentFont(void)
 static inline SpriteChunk *
 GetAvailableSpriteChunk(SpriteLayer *layer)
 {
+    Assert(render_state->sprite_mode != Draw_None);
     if (!layer->first_sprite_chunk ||
         (layer->first_sprite_chunk->sprite_count >= ArrayCount(layer->first_sprite_chunk->sprites)))
     {
@@ -291,11 +292,11 @@ DrawTile(V2i tile_p, Sprite sprite)
     V2i rect_p = tile_p / MakeV2i(rects->glyphs_per_col, rects->glyphs_per_row);
 
     uint64_t *hash = &rects->rect_hashes[rect_p.y*rects->rect_count_x + rect_p.x];
-    *hash = MixFnv1a(*hash, sizeof(*to_draw), to_draw);
+    *hash = HashData(*hash, sizeof(*to_draw), to_draw);
 }
 
-static inline 
-void DrawRect(const Rect2i &rect, Color foreground, Color background)
+static inline void
+DrawRect(const Rect2i &rect, Color foreground, Color background)
 {
     uint32_t left   = Wall_Left;
     uint32_t right  = Wall_Right;
@@ -348,25 +349,20 @@ BeginRender(DrawMode mode)
 
     Font *font = layer->font;
 
-    int total_glyphs_per_col = (target->w + font->glyph_w - 1) / font->glyph_w;
-    int total_glyphs_per_row = (target->h + font->glyph_h - 1) / font->glyph_h;
+    int total_glyphs_per_col = target->w / font->glyph_w;
+    int total_glyphs_per_row = target->h / font->glyph_h;
 
     DirtyRects *rects = &layer->rects;
     rects->rect_count_x = RECT_HASH_COUNT_X;
     rects->rect_count_y = RECT_HASH_COUNT_Y;
     rects->rect_count = rects->rect_count_x*rects->rect_count_y;
 
-    rects->glyphs_per_col = (total_glyphs_per_col + rects->rect_count_x - 1) / rects->rect_count_x;
-    rects->glyphs_per_row = (total_glyphs_per_row + rects->rect_count_y - 1) / rects->rect_count_y;
+    rects->glyphs_per_col = total_glyphs_per_col / rects->rect_count_x;
+    rects->glyphs_per_row = total_glyphs_per_row / rects->rect_count_y;
 
     rects->rect_w = rects->glyphs_per_col*font->glyph_w;
     rects->rect_h = rects->glyphs_per_row*font->glyph_h;
-    rects->rect_hashes = PushArrayNoClear(arena, rects->rect_count, uint64_t);
-    for (size_t i = 0; i < rects->rect_count; ++i)
-    {
-        rects->rect_hashes[i] = BeginFnv1a();
-    }
-    render_state->dirty_rects = rects;
+    rects->rect_hashes = PushArray(arena, rects->rect_count, uint64_t);
 }
 
 struct TiledRenderJobParams
@@ -442,7 +438,6 @@ EndRender(void)
             {
                 continue;
             }
-            platform->DebugPrint("this hash: %llu, prev hash: %llu\n", this_rect_hash, prev_rect_hash);
         }
 
         tiles_redrawn[tile_index] = true;
@@ -461,4 +456,5 @@ EndRender(void)
     platform->WaitForJobs(platform->job_queue);
 
     Swap(layer->rects, layer->prev_rects);
+    render_state->sprite_mode = Draw_None;
 }

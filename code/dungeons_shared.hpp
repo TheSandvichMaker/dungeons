@@ -92,49 +92,72 @@ CopySize(size_t Size, const void *SourceInit, void *DestInit)
 }
 #define CopyStruct(source, dest) CopySize(sizeof(*(source)), source, dest)
 
-static inline uint64_t
-HashString(String string)
+struct HashResult
 {
-    char seed[16] = {};
-    __m128i hash = _mm_loadu_si128((__m128i*)seed);
+    union
+    {
+        __m128i m128i;
+        uint64_t u64[2];
+        uint32_t u32[4];
+        uint16_t u16[8];
+        uint8_t u8[16];
+    };
+};
 
-    uint64_t len16 = string.size / 16;
-    __m128i *at = (__m128i *)string.data;
+static inline bool
+operator == (HashResult a, HashResult b)
+{
+    return (a.u64[0] == b.u64[0] &&
+            a.u64[1] == b.u64[1]);
+}
+
+static inline HashResult
+HashData(HashResult seed, size_t len, const void *data_init)
+{
+    const char *data = (const char *)data_init;
+
+    __m128i hash = seed.m128i;
+
+    uint64_t len16 = len / 16;
+    __m128i *at = (__m128i *)data;
     while (len16--)
     {
         hash = _mm_aesdec_si128(hash, _mm_loadu_si128(at));
+        hash = _mm_aesdec_si128(hash, seed.m128i);
+        hash = _mm_aesdec_si128(hash, seed.m128i);
         ++at;
     }
 
-    uint8_t overhang[16] = {};
-    CopySize(string.size % 16, string.data, overhang);
+    char overhang[16] = {};
+    CopySize(len % 16, at, overhang);
     hash = _mm_aesdec_si128(hash, _mm_loadu_si128((__m128i*)overhang));
+    hash = _mm_aesdec_si128(hash, seed.m128i);
+    hash = _mm_aesdec_si128(hash, seed.m128i);
 
-    uint64_t result = _mm_cvtsi128_si64(hash);
+    HashResult result;
+    result.m128i = hash;
+    return result;
+}
+
+static inline uint64_t
+HashData(uint64_t seed, size_t len, const void *data)
+{
+    HashResult full_seed = {};
+    full_seed.u64[0] = seed;
+
+    HashResult full_result = HashData(full_seed, len, data);
+
+    return _mm_extract_epi64(full_result.m128i, 0);
+}
+
+static inline HashResult
+HashString(String string)
+{
+    HashResult seed = {};
+    HashResult result = HashData(seed, string.size, string.data);
     return result;
 }
 
 #define CopyArray(Count, Source, Dest) CopySize(sizeof(*(Source))*Count, Source, Dest)
-
-static inline uint64_t
-BeginFnv1a(void)
-{
-    uint64_t hash = 0xcbf29ce484222325ull;
-    return hash;
-}
-
-static inline uint64_t
-MixFnv1a(size_t hash, size_t len, const void *data_init)
-{
-    const char *data = (const char *)data_init;
-
-    for (size_t i = 0; i < len; ++i)
-    {
-        hash ^= data[i];
-        hash *= 0x100000001b3ull;
-    }
-
-    return hash;
-}
 
 #endif /* DUNGEONS_SHARED_HPP */

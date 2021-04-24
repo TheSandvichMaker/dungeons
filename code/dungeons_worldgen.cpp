@@ -4,7 +4,7 @@ struct GenRoom
     Rect2i rect;
 };
 
-static void
+static inline void
 GenerateWorld(uint64_t seed)
 {
     Arena *arena = GetTempArena();

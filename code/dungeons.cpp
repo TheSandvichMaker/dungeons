@@ -6,6 +6,7 @@
 #include "dungeons_render.cpp"
 #include "dungeons_controller.cpp"
 #include "dungeons_entity.cpp"
+#include "dungeons_worldgen.cpp"
 
 // Ryan's text controls example: https://hatebin.com/ovcwtpsfmj
 
@@ -90,12 +91,16 @@ AppUpdateAndRender(Platform *platform_)
         game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, "font8x16.bmp"_str, 8, 16);
         InitializeRenderState(&platform->backbuffer, &game_state->world_font, &game_state->ui_font);
 
+#if 0
         AddRoom(MakeRect2iMinDim(1, 1, 16, 16));
 
-        Entity *angry = AddEntity(MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1, MakeColor(255, 0, 0)));
+        Entity *angry = AddEntity(MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1));
         SetProperty(angry, EntityProperty_AngryDude);
 
         AddPlayer(MakeV2i(5, 6));
+#else
+        GenerateWorld(0xDEADBEEF);
+#endif
 
         platform->app_initialized = true;
     }

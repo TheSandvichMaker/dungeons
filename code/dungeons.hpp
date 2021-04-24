@@ -7,6 +7,7 @@
 #include "dungeons_memory.hpp"
 #include "dungeons_global_state.hpp"
 #include "dungeons_math.hpp"
+#include "dungeons_random.hpp"
 #include "dungeons_image.hpp"
 #include "dungeons_render.hpp"
 #include "dungeons_controller.hpp"
