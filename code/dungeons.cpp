@@ -9,17 +9,6 @@
 
 // Ryan's text controls example: https://hatebin.com/ovcwtpsfmj
 
-static inline Bitmap
-PushBitmap(Arena *arena, int w, int h)
-{
-    Bitmap result = {};
-    result.w = w;
-    result.h = h;
-    result.pitch = w;
-    result.data = PushArray(arena, w*h, Color);
-    return result;
-}
-
 static inline StringContainer
 PushEmptyStringContainer(Arena *arena, size_t capacity)
 {
@@ -99,7 +88,7 @@ AppUpdateAndRender(Platform *platform_)
     {
         game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, "font16x16.bmp"_str, 16, 16);
         game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, "font8x16.bmp"_str, 8, 16);
-        InitializeRenderState(&game_state->transient_arena, &platform->backbuffer, &game_state->world_font, &game_state->ui_font);
+        InitializeRenderState(&platform->backbuffer, &game_state->world_font, &game_state->ui_font);
 
         AddRoom(MakeRect2iMinDim(1, 1, 16, 16));
 

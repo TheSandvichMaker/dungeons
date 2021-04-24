@@ -97,7 +97,6 @@ struct Sprite
     Color foreground;
     Color background;
     Glyph glyph;
-    V2i offset_p;
 };
 
 static inline Sprite
@@ -135,17 +134,35 @@ struct SpriteToDraw
     V2i p;
 };
 
-struct TileMap
+struct SpriteChunk
 {
-    int w, h;
-    Sprite *sprites;
+    SpriteChunk *next;
+    uint32_t sprite_count;
+    SpriteToDraw sprites[512];
+};
+
+struct DirtyRects
+{
+    int glyphs_per_col, glyphs_per_row;
+    int rect_count_x, rect_count_y, rect_count;
+    int rect_w, rect_h;
     uint64_t *rect_hashes;
-    uint64_t *prev_rect_hashes;
+};
+
+struct SpriteLayer
+{
+    Font *font;
+    SpriteChunk *first_sprite_chunk;
+    DirtyRects rects;
+    DirtyRects prev_rects;
 };
 
 struct RenderState
 {
+    Arena *arena;
+
     Bitmap *target;
+
     Font *world_font;
     Font *ui_font;
 
@@ -155,8 +172,10 @@ struct RenderState
     Glyph wall_segment_lookup[Wall_MAXVALUE + 1];
 
     DrawMode sprite_mode;
-    TileMap ui_tile_map;
-    TileMap world_tile_map;
+    SpriteLayer world_layer;
+
+    DirtyRects *dirty_rects;
+    DirtyRects *prev_dirty_rects;
 };
 
 GLOBAL_STATE(RenderState, render_state);

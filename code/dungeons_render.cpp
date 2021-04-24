@@ -1,5 +1,5 @@
 static inline void
-InitializeRenderState(Arena *arena, Bitmap *target, Font *world_font, Font *ui_font)
+InitializeRenderState(Bitmap *target, Font *world_font, Font *ui_font)
 {
     render_state->target     = target;
     render_state->world_font = world_font;
@@ -15,23 +15,6 @@ InitializeRenderState(Arena *arena, Bitmap *target, Font *world_font, Font *ui_f
     {
         platform->ReportError(PlatformError_Nonfatal, "Bad font metrics! The UI font is bigger than the World font (world: %dx%d versus ui: %dx%d)", world_font->glyph_w, world_font->glyph_h, ui_font->glyph_w, ui_font->glyph_h);
     }
-
-    int pixel_w = render_state->target->w;
-    int pixel_h = render_state->target->h;
-
-    auto AllocateTilemap = [](Arena *arena, Font *font, int pixel_w, int pixel_h)
-    {
-        TileMap map = {};
-        map.w = (pixel_w + font->glyph_w - 1) / font->glyph_w;
-        map.h = (pixel_h + font->glyph_h - 1) / font->glyph_h;
-        map.sprites = PushArray(arena, map.w*map.h, Sprite);
-        map.rect_hashes = PushArray(arena, RECT_HASH_COUNT, uint64_t);
-        map.prev_rect_hashes = PushArray(arena, RECT_HASH_COUNT, uint64_t);
-        return map;
-    };
-
-    render_state->ui_tile_map = AllocateTilemap(arena, render_state->ui_font, pixel_w, pixel_h);
-    render_state->world_tile_map = AllocateTilemap(arena, render_state->world_font, pixel_w, pixel_h);
 
     render_state->wall_segment_lookup[Wall_Top|Wall_Bottom]                                          = 179;
     render_state->wall_segment_lookup[Wall_Top|Wall_Bottom|Wall_Left]                                = 180;
@@ -78,6 +61,17 @@ InitializeRenderState(Arena *arena, Bitmap *target, Font *world_font, Font *ui_f
                                                                                            render_state->ui_font->glyph_h);
 }
 
+static inline Bitmap
+PushBitmap(Arena *arena, int w, int h)
+{
+    Bitmap result = {};
+    result.w = w;
+    result.h = h;
+    result.pitch = w;
+    result.data = PushArray(arena, w*h, Color);
+    return result;
+}
+
 static inline Sprite
 MakeWall(uint32_t wall_flags, Color foreground = COLOR_WHITE, Color background = COLOR_BLACK)
 {
@@ -116,7 +110,7 @@ ScreenToWorld(V2i p)
 }
 
 static inline void
-ClearBitmap(Bitmap *bitmap, Color clear_color)
+ClearBitmap(Bitmap *bitmap, Color clear_color = MakeColor(0, 0, 0, 0))
 {
     Color *row = bitmap->data;
     for (int y = 0; y < bitmap->h; ++y)
@@ -253,22 +247,6 @@ TileToScreen(DrawMode mode, V2i p)
     return p;
 }
 
-static inline TileMap *
-CurrentTileMap(void)
-{
-    TileMap *map = nullptr;
-    if (render_state->sprite_mode == Draw_World)
-    {
-        map = &render_state->world_tile_map;
-    }
-    else
-    {
-        Assert(render_state->sprite_mode == Draw_Ui);
-        map = &render_state->ui_tile_map;
-    }
-    return map;
-}
-
 static inline Font *
 CurrentFont(void)
 {
@@ -283,33 +261,37 @@ CurrentFont(void)
     }
 }
 
+static inline SpriteChunk *
+GetAvailableSpriteChunk(SpriteLayer *layer)
+{
+    if (!layer->first_sprite_chunk ||
+        (layer->first_sprite_chunk->sprite_count >= ArrayCount(layer->first_sprite_chunk->sprites)))
+    {
+        SpriteChunk *new_sprite_chunk = PushStruct(render_state->arena, SpriteChunk);
+        new_sprite_chunk->next = layer->first_sprite_chunk;
+        layer->first_sprite_chunk = new_sprite_chunk;
+    }
+
+    return layer->first_sprite_chunk;
+}
+
 static inline void
 DrawTile(V2i tile_p, Sprite sprite)
 {
-    TileMap *map = CurrentTileMap();
-    if (render_state->sprite_mode == Draw_World)
-    {
-        tile_p -= render_state->camera_bottom_left;
-    }
+    SpriteLayer *layer = &render_state->world_layer;
+    tile_p -= render_state->camera_bottom_left;
 
-    if (tile_p.x > 0 && tile_p.y > 0 && tile_p.x < map->w && tile_p.y < map->h)
-    {
-        struct { V2i p; Sprite sprite; } hash_data = { tile_p, sprite };
+    SpriteChunk *chunk = GetAvailableSpriteChunk(layer);
 
-        int dirty_rect_w = map->w / RECT_HASH_COUNT_X;
-        int dirty_rect_h = map->h / RECT_HASH_COUNT_Y;
+    SpriteToDraw *to_draw = &chunk->sprites[chunk->sprite_count++];
+    to_draw->p = tile_p;
+    to_draw->sprite = sprite;
 
-        int dirty_rect_x = tile_p.x / dirty_rect_w;
-        int dirty_rect_y = tile_p.y / dirty_rect_h;
+    DirtyRects *rects = &layer->rects;
+    V2i rect_p = tile_p / MakeV2i(rects->glyphs_per_col, rects->glyphs_per_row);
 
-        size_t dirty_rect_index = dirty_rect_y*RECT_HASH_COUNT_X + dirty_rect_x;
-
-        uint64_t hash = map->rect_hashes[dirty_rect_index];
-        hash = MixFnv1a(hash, sizeof(hash_data), &hash_data);
-        map->rect_hashes[dirty_rect_index] = hash;
-
-        map->sprites[tile_p.y*map->w + tile_p.x] = sprite;
-    }
+    uint64_t *hash = &rects->rect_hashes[rect_p.y*rects->rect_count_x + rect_p.x];
+    *hash = MixFnv1a(*hash, sizeof(*to_draw), to_draw);
 }
 
 static inline 
@@ -354,19 +336,42 @@ static void
 BeginRender(DrawMode mode)
 {
     render_state->sprite_mode = mode;
-    TileMap *map = CurrentTileMap();
 
-    ZeroArray(map->w*map->h, map->sprites);
-    for (size_t i = 0; i < RECT_HASH_COUNT; ++i)
+    Arena *arena = GetTempArena();
+    render_state->arena = arena;
+
+    Bitmap *target = render_state->target;
+
+    SpriteLayer *layer = &render_state->world_layer;
+    layer->first_sprite_chunk = nullptr;
+    layer->font = render_state->world_font;
+
+    Font *font = layer->font;
+
+    int total_glyphs_per_col = (target->w + font->glyph_w - 1) / font->glyph_w;
+    int total_glyphs_per_row = (target->h + font->glyph_h - 1) / font->glyph_h;
+
+    DirtyRects *rects = &layer->rects;
+    rects->rect_count_x = RECT_HASH_COUNT_X;
+    rects->rect_count_y = RECT_HASH_COUNT_Y;
+    rects->rect_count = rects->rect_count_x*rects->rect_count_y;
+
+    rects->glyphs_per_col = (total_glyphs_per_col + rects->rect_count_x - 1) / rects->rect_count_x;
+    rects->glyphs_per_row = (total_glyphs_per_row + rects->rect_count_y - 1) / rects->rect_count_y;
+
+    rects->rect_w = rects->glyphs_per_col*font->glyph_w;
+    rects->rect_h = rects->glyphs_per_row*font->glyph_h;
+    rects->rect_hashes = PushArrayNoClear(arena, rects->rect_count, uint64_t);
+    for (size_t i = 0; i < rects->rect_count; ++i)
     {
-        map->rect_hashes[i] = BeginFnv1a();
+        rects->rect_hashes[i] = BeginFnv1a();
     }
+    render_state->dirty_rects = rects;
 }
 
 struct TiledRenderJobParams
 {
-    TileMap *map;
-    Font *font;
+    SpriteLayer *layer;
     Rect2i clip_rect;
 };
 
@@ -375,63 +380,78 @@ PLATFORM_JOB(TiledRenderJob)
 {
     TiledRenderJobParams *params = (TiledRenderJobParams *)args;
 
-    TileMap *map = params->map;
+    SpriteLayer *layer = params->layer;
+    Font *font = layer->font;
+
     Rect2i clip_rect = params->clip_rect;
 
-    Font *font = params->font;
+    Bitmap target = MakeBitmapView(render_state->target, clip_rect);
+    ClearBitmap(&target, COLOR_BLACK);
 
-    for (int y = clip_rect.min.y; y < clip_rect.max.y; ++y)
-    for (int x = clip_rect.min.x; x < clip_rect.max.x; ++x)
+    for (SpriteChunk *chunk = layer->first_sprite_chunk;
+         chunk;
+         chunk = chunk->next)
     {
-        V2i p = MakeV2i(x*font->glyph_w, y*font->glyph_h);
-        Sprite *sprite = &map->sprites[y*map->w + x];
-        if (sprite->glyph)
+        for (size_t i = 0; i < chunk->sprite_count; ++i)
         {
-            Rect2i glyph_rect = GetGlyphRect(font, sprite->glyph);
-            Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, glyph_rect);
-            BlitBitmapMask(render_state->target, &glyph_bitmap, p + sprite->offset_p, sprite->foreground, sprite->background);
+            SpriteToDraw *to_draw = &chunk->sprites[i];
+            Sprite *sprite = &to_draw->sprite;
+
+            V2i p = MakeV2i(to_draw->p.x*font->glyph_w, to_draw->p.y*font->glyph_h);
+            if (RectanglesOverlap(clip_rect, MakeRect2iMinDim(p, MakeV2i(font->glyph_w, font->glyph_h))))
+            {
+                p -= clip_rect.min;
+
+                Rect2i glyph_rect = GetGlyphRect(font, sprite->glyph);
+                Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, glyph_rect);
+                BlitBitmapMask(&target, &glyph_bitmap, p, sprite->foreground, sprite->background);
+            }
         }
     }
 }
 
 static void
-RenderTileMap(TileMap *map, Font *font)
+EndRender(void)
 {
-    Rect2i pixel_target_bounds = MakeRect2iMinDim(0, 0, render_state->target->w, render_state->target->h);
-    Rect2i target_bounds = MakeRect2iMinDim(0, 0, map->w, map->h);
+    SpriteLayer *layer = &render_state->world_layer;
 
-    const int tile_count_x = RECT_HASH_COUNT_X;
-    const int tile_count_y = RECT_HASH_COUNT_Y;
-    TiledRenderJobParams tiles[tile_count_x*tile_count_y];
+    DirtyRects *rects = &layer->rects;
+    DirtyRects *prev_rects = &layer->prev_rects;
 
-    int tile_w = map->w / tile_count_x;
-    int tile_h = map->h / tile_count_y;
+    Bitmap *target = render_state->target;
+    Rect2i target_bounds = MakeRect2iMinDim(0, 0, target->w, target->h);
 
-    int pixel_tile_w = tile_w*font->glyph_w;
-    int pixel_tile_h = tile_h*font->glyph_h;
+    int tile_count_x = rects->rect_count_x;
+    int tile_count_y = rects->rect_count_y;
+    int tile_count = tile_count_x*tile_count_y;
+    TiledRenderJobParams *tiles = PushArray(render_state->arena, tile_count, TiledRenderJobParams);
+    bool *tiles_redrawn = PushArray(render_state->arena, tile_count, bool);
+
+    int tile_w = rects->rect_w;
+    int tile_h = rects->rect_h;
 
     for (int tile_y = 0; tile_y < tile_count_y; ++tile_y)
     for (int tile_x = 0; tile_x < tile_count_x; ++tile_x)
     {
-        uint64_t this_rect_hash = map->rect_hashes[tile_y*tile_count_x + tile_x];
-        uint64_t prev_rect_hash = map->prev_rect_hashes[tile_y*tile_count_x + tile_x];
-        if (this_rect_hash == prev_rect_hash)
+        int tile_index = tile_y*tile_count_x + tile_x;
+        if (prev_rects->rect_hashes)
         {
-            continue;
+            uint64_t this_rect_hash = rects->rect_hashes[tile_index];
+            uint64_t prev_rect_hash = prev_rects->rect_hashes[tile_index];
+            if (this_rect_hash == prev_rect_hash)
+            {
+                continue;
+            }
+            platform->DebugPrint("this hash: %llu, prev hash: %llu\n", this_rect_hash, prev_rect_hash);
         }
 
-        Rect2i pixels_to_clear_region = MakeRect2iMinDim(tile_x*pixel_tile_w, tile_y*pixel_tile_h, pixel_tile_w, pixel_tile_h);
-        pixels_to_clear_region = Intersect(pixels_to_clear_region, pixel_target_bounds); 
+        tiles_redrawn[tile_index] = true;
 
-        Bitmap pixels_to_clear = MakeBitmapView(render_state->target, pixels_to_clear_region);
-        ClearBitmap(&pixels_to_clear, COLOR_BLACK);
-
-        TiledRenderJobParams *params = &tiles[tile_y*tile_count_x + tile_x];
-        params->map = map;
-        params->font = font;
+        TiledRenderJobParams *params = &tiles[tile_index];
+        params->layer = layer;
 
         Rect2i clip_rect = MakeRect2iMinDim(tile_x*tile_w, tile_y*tile_h, tile_w, tile_h);
-        clip_rect = Intersect(clip_rect, target_bounds);
+        clip_rect = Intersect(clip_rect, target_bounds); 
 
         params->clip_rect = clip_rect;
 
@@ -440,13 +460,5 @@ RenderTileMap(TileMap *map, Font *font)
 
     platform->WaitForJobs(platform->job_queue);
 
-    Swap(map->rect_hashes, map->prev_rect_hashes);
-}
-
-static void
-EndRender(void)
-{
-    TileMap *map = CurrentTileMap();
-    Font *font = CurrentFont();
-    RenderTileMap(map, font);
+    Swap(layer->rects, layer->prev_rects);
 }
