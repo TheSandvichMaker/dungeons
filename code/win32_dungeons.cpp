@@ -1,5 +1,12 @@
 #include "win32_dungeons.hpp"
 
+//
+// TODO: Run game on separate thread from the windows guff
+// Presumably this requires no longer relying on Dwm for vsync which is fine
+// Instead of OpenGL I could do this: https://gist.github.com/mmozeiko/6f36f2b82204b70a9b7fe6c05ccd868f?ts=4
+// Although for just showing textures a jank immediate mode OpenGL context would work fine
+//
+
 static bool g_running;
 static LARGE_INTEGER g_perf_freq;
 static WINDOWPLACEMENT g_window_position = { sizeof(g_window_position) };
@@ -694,6 +701,12 @@ Win32_ThreadProc(LPVOID userdata)
 
             if (entry_index == exchanged_index)
             {
+                // TODO: Double buffered temp arenas are less useful in this context, not sure what the right design is,
+                // not that important for now though.
+                ThreadLocalContext *context = platform->GetThreadLocalContext();
+                Swap(context->temp_arena, context->prev_temp_arena);
+                Clear(context->temp_arena);
+
                 PlatformJobEntry *job = &queue->jobs[entry_index % ArrayCount(queue->jobs)];
                 job->proc(job->args);
 
@@ -798,8 +811,12 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     win32_state.allocation_sentinel.next = &win32_state.allocation_sentinel;
     win32_state.allocation_sentinel.prev = &win32_state.allocation_sentinel;
 
+    PlatformJobQueue high_priority_queue = {};
+    PlatformJobQueue  low_priority_queue = {};
+
     platform->page_size = system_info.dwPageSize;
-    platform->job_queue = &win32_state.job_queue;
+    platform->high_priority_queue = &high_priority_queue;
+    platform->low_priority_queue = &low_priority_queue;
     platform->DebugPrint = Win32_DebugPrint;
     platform->ReportError = Win32_ReportError;
     platform->AllocateMemory = Win32_Allocate;
@@ -823,7 +840,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     ThreadLocalContext tls_context = {};
     Win32_InitializeTLSForThread(&tls_context);
 
-    Win32_InitializeJobQueue(&win32_state.job_queue, 12);
+    Win32_InitializeJobQueue(&high_priority_queue, 8);
+    Win32_InitializeJobQueue(&low_priority_queue, 4);
 
     win32_state.exe_folder = FindExeFolderLikeAMonkeyInAMonkeySuit();
     win32_state.dll_path   = FormatWString(&win32_state.arena, L"\\\\?\\%s\\dungeons.dll", win32_state.exe_folder);
@@ -862,15 +880,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
 
         {
             ThreadLocalContext *context = &tls_context;
-            Swap(context->temp_arena, context->prev_temp_arena);
-            Clear(context->temp_arena);
-        }
-
-        PlatformJobQueue *queue = platform->job_queue;
-        Assert(queue->jobs_in_flight == 0);
-        for (int i = 0; i < queue->thread_count; ++i)
-        {
-            ThreadLocalContext *context = &queue->tls[i];
             Swap(context->temp_arena, context->prev_temp_arena);
             Clear(context->temp_arena);
         }
@@ -993,8 +1002,6 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
         {
             app_code->UpdateAndRender(platform);
             platform->exe_reloaded = false;
-
-            Assert(platform->job_queue->jobs_in_flight == 0);
         }
         Win32_DisplayOffscreenBuffer(window, buffer);
 
@@ -1040,7 +1047,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
         }
     }
 
-    Win32_CloseJobQueue(platform->job_queue);
+    Win32_CloseJobQueue(platform->high_priority_queue);
+    Win32_CloseJobQueue(platform->low_priority_queue);
     Win32_ResizeOffscreenBuffer(&platform->backbuffer, 0, 0);
 
     bool leaked_memory = false;

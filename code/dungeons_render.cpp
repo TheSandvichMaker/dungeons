@@ -450,10 +450,10 @@ EndRender(void)
 
         params->clip_rect = clip_rect;
 
-        platform->AddJob(platform->job_queue, params, TiledRenderJob);
+        platform->AddJob(platform->high_priority_queue, params, TiledRenderJob);
     }
 
-    platform->WaitForJobs(platform->job_queue);
+    platform->WaitForJobs(platform->high_priority_queue);
 
     Swap(layer->rects, layer->prev_rects);
     render_state->sprite_mode = Draw_None;

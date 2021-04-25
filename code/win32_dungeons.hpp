@@ -65,7 +65,6 @@ struct Win32State
     Win32AppCode app_code;
 
     DWORD thread_local_index;
-    PlatformJobQueue job_queue;
 
     Win32AllocationHeader allocation_sentinel;
 };

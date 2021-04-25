@@ -58,4 +58,11 @@ FindLeastSignificantSetBit(uint32_t value)
     return result;
 }
 
+static inline uint64_t
+ExtractU64(__m128i v, int index)
+{
+    AssertSlow(index < 2);
+    return ((uint64_t *)&v)[index];
+}
+
 #endif /* DUNGEONS_INTRINSICS_HPP */

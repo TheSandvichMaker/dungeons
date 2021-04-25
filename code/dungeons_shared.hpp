@@ -1,7 +1,7 @@
 #ifndef DUNGEONS_SHARED_HPP
 #define DUNGEONS_SHARED_HPP
 
-static constexpr bool
+static constexpr inline bool
 IsPow2(size_t size)
 {
     return (size != 0 && (size & (size - 1)) == 0);
@@ -91,6 +91,7 @@ CopySize(size_t Size, const void *SourceInit, void *DestInit)
 #endif
 }
 #define CopyStruct(source, dest) CopySize(sizeof(*(source)), source, dest)
+#define CopyArray(Count, Source, Dest) CopySize(sizeof(*(Source))*Count, Source, Dest)
 
 struct HashResult
 {
@@ -129,7 +130,10 @@ HashData(HashResult seed, size_t len, const void *data_init)
     }
 
     char overhang[16] = {};
-    CopySize(len % 16, at, overhang);
+    for (size_t i = 0; i < len % 16; ++i)
+    {
+        overhang[i] = ((char *)at)[i];
+    }
     hash = _mm_aesdec_si128(hash, _mm_loadu_si128((__m128i*)overhang));
     hash = _mm_aesdec_si128(hash, seed.m128i);
     hash = _mm_aesdec_si128(hash, seed.m128i);
@@ -147,7 +151,7 @@ HashData(uint64_t seed, size_t len, const void *data)
 
     HashResult full_result = HashData(full_seed, len, data);
 
-    return _mm_extract_epi64(full_result.m128i, 0);
+    return ExtractU64(full_result.m128i, 0);
 }
 
 static inline HashResult
@@ -157,7 +161,5 @@ HashString(String string)
     HashResult result = HashData(seed, string.size, string.data);
     return result;
 }
-
-#define CopyArray(Count, Source, Dest) CopySize(sizeof(*(Source))*Count, Source, Dest)
 
 #endif /* DUNGEONS_SHARED_HPP */

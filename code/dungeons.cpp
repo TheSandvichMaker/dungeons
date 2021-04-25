@@ -87,11 +87,11 @@ AppUpdateAndRender(Platform *platform_)
 
     if (!platform->app_initialized)
     {
-        game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, "font16x16.bmp"_str, 16, 16);
-        game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, "font8x16.bmp"_str, 8, 16);
+        game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font16x16.bmp"), 16, 16);
+        game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font8x16.bmp"), 8, 16);
         InitializeRenderState(&platform->backbuffer, &game_state->world_font, &game_state->ui_font);
 
-#if 0
+#if 1
         AddRoom(MakeRect2iMinDim(1, 1, 16, 16));
 
         Entity *angry = AddEntity(MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1));

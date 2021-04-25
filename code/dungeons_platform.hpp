@@ -336,7 +336,8 @@ struct Platform
     void (*ReportError)(PlatformErrorType type, char *message, ...);
 
     size_t page_size;
-    PlatformJobQueue *job_queue;
+    PlatformJobQueue *high_priority_queue;
+    PlatformJobQueue *low_priority_queue;
 
     void *(*AllocateMemory)(size_t size, uint32_t flags, const char *tag);
     void *(*ReserveMemory)(size_t size, uint32_t flags, const char *tag);

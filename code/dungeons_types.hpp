@@ -32,7 +32,7 @@ operator ""_str(const char *data, size_t size)
     return result;
 }
 
-#define StringLiteral(lit) String { sizeof(lit) - 1, (uint8_t *)lit }
+#define StringLiteral(c_string) Paste(c_string, _str)
 #define StringExpand(string) (int)(string).size, (char *)(string).data
 
 struct StringContainer
