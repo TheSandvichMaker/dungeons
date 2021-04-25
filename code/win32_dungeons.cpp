@@ -706,9 +706,15 @@ Win32_ThreadProc(LPVOID userdata)
         }
         else
         {
-            WaitForSingleObject(queue->run, INFINITE);
+            HANDLE handles[] = { queue->stop, queue->run };
+            if (WaitForMultipleObjects(2, handles, FALSE, INFINITE) == WAIT_OBJECT_0)
+            {
+                break;
+            }
         }
     }
+
+    return 0;
 }
 
 static void
