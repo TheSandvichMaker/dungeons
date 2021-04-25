@@ -28,9 +28,12 @@ if "%1" equ "release" (
     set FLAGS=%FLAGS% %DEBUG_FLAGS%
 )
 
+if not exist ctm mkdir ctm
 misc\ctime.exe -begin ctm\dungeons.ctm
 
 echo I'm here to be depressed and I'm not out of that at all > build\dungeons_lock.temp
+
+if not exist build mkdir build
 
 if "%DUNGEONS_USE_LLVM%" equ "1" goto build_llvm
 
