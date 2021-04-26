@@ -22,6 +22,7 @@ enum EntityPropertyKind
     EntityProperty_C,
     EntityProperty_AngryDude,
     EntityProperty_COUNT,
+    EntityProperty_PAGECOUNT = (EntityProperty_COUNT + 63) / 64,
 };
 
 struct EntityPropertySet
@@ -58,7 +59,13 @@ struct Entity
     float flash_timer;
     Color flash_color;
 
-    Sprite sprite;
+    float sprite_anim_rate;
+    float sprite_anim_timer;
+    float sprite_anim_pause_time;
+    int16_t sprite_count;
+    int16_t sprite_index;
+    Sprite sprites[4];
+
     uint64_t properties[(EntityProperty_COUNT + 63) / 64];
 };
 
@@ -90,5 +97,149 @@ struct EntityManager
     EntityHandle entity_grid[WORLD_EXTENT_X][WORLD_EXTENT_X];
 };
 GLOBAL_STATE(EntityManager, entity_manager);
+
+static inline void
+SetProperty(Entity *e, EntityPropertyKind property)
+{
+    if (e)
+    {
+        e->properties[property / 64] |= 1ull << (property % 64);
+    }
+}
+
+static inline void
+SetProperty(Entity *e, EntityPropertySet set)
+{
+    if (e)
+    {
+        for (size_t i = 0; i < EntityProperty_PAGECOUNT; ++i)
+        {
+            e->properties[i] |= set.properties[i];
+        }
+    }
+}
+
+static inline void
+UnsetProperty(Entity *e, EntityPropertyKind property)
+{
+    if (e)
+    {
+        e->properties[property / 64] &= ~(1ull << (property % 64));
+    }
+}
+
+static inline bool
+HasProperty(Entity *e, EntityPropertyKind property)
+{
+    bool result = false;
+    if (e)
+    {
+        result = !!(e->properties[property / 64] & (1ull << (property % 64)));
+    }
+    return result;
+}
+
+static inline bool
+HasProperties(Entity *e, EntityPropertySet set)
+{
+    bool result = true;
+    for (size_t i = 0; i < EntityProperty_PAGECOUNT; ++i)
+    {
+        if ((e->properties[i] & set.properties[i]) != set.properties[i])
+        {
+            result = false;
+            break;
+        }
+    }
+    return result;
+}
+
+static inline EntityPropertySet
+SetProperty(EntityPropertySet set, EntityPropertyKind property)
+{
+    set.properties[property / 64] |= 1ull << (property % 64);
+    return set;
+}
+
+static inline void
+UnsetProperty(EntityPropertySet *set, EntityPropertyKind property)
+{
+    set->properties[property / 64] &= ~(1ull << (property % 64));
+}
+
+static inline bool
+HasProperty(EntityPropertySet *set, EntityPropertyKind property)
+{
+    bool result = !!(set->properties[property / 64] & (1ull << (property % 64)));
+    return result;
+}
+
+static inline EntityPropertySet
+AnyProperty(void)
+{
+    EntityPropertySet result = {};
+    for (size_t i = 0; i = EntityProperty_COUNT / 64; ++i)
+    {
+        result.properties[i] = (uint64_t)-1;
+    }
+    return result;
+}
+
+#define MakeEntityPropertySet(...) MakeEntityPropertySet_(__VA_ARGS__, EntityProperty_None)
+static inline EntityPropertySet
+MakeEntityPropertySet_(EntityPropertyKind first, ...)
+{
+    EntityPropertySet result = {};
+    result = SetProperty(result, first);
+
+    va_list args;
+    va_start(args, first);
+    for (;;)
+    {
+        EntityPropertyKind prop = va_arg(args, EntityPropertyKind);
+        if (prop == EntityProperty_None)
+        {
+            break;
+        }
+
+        result = SetProperty(result, prop);
+    }
+
+    return result;
+}
+
+static inline EntityPropertySet
+CombineSet(EntityPropertySet a, EntityPropertySet b)
+{
+    EntityPropertySet result = a;
+    for (size_t i = 0; i < EntityProperty_PAGECOUNT; ++i)
+    {
+        result.properties[i] |= b.properties[i];
+    }
+    return result;
+}
+
+static inline EntityPropertySet
+operator | (EntityPropertyKind a, EntityPropertyKind b)
+{
+    EntityPropertySet result = {};
+    result = SetProperty(result, a);
+    result = SetProperty(result, b);
+    return result;
+}
+
+static inline EntityPropertySet
+operator | (EntityPropertySet set, EntityPropertyKind prop)
+{
+    set = SetProperty(set, prop);
+    return set;
+}
+
+static inline EntityPropertySet
+operator | (EntityPropertySet a, EntityPropertySet b)
+{
+    EntityPropertySet result = CombineSet(a, b);
+    return result;
+}
 
 #endif /* DUNGEONS_ENTITY_HPP */

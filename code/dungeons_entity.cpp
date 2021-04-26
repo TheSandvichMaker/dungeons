@@ -1,62 +1,3 @@
-static inline void
-SetProperty(Entity *e, EntityPropertyKind property)
-{
-    if (e)
-    {
-        e->properties[property / 64] |= 1ull << (property % 64);
-    }
-}
-
-static inline void
-UnsetProperty(Entity *e, EntityPropertyKind property)
-{
-    if (e)
-    {
-        e->properties[property / 64] &= ~(1ull << (property % 64));
-    }
-}
-
-static inline bool
-HasProperty(Entity *e, EntityPropertyKind property)
-{
-    bool result = false;
-    if (e)
-    {
-        result = !!(e->properties[property / 64] & (1ull << (property % 64)));
-    }
-    return result;
-}
-
-static inline void
-SetProperty(EntityPropertySet *set, EntityPropertyKind property)
-{
-    set->properties[property / 64] |= 1ull << (property % 64);
-}
-
-static inline void
-UnsetProperty(EntityPropertySet *set, EntityPropertyKind property)
-{
-    set->properties[property / 64] &= ~(1ull << (property % 64));
-}
-
-static inline bool
-HasProperty(EntityPropertySet *set, EntityPropertyKind property)
-{
-    bool result = !!(set->properties[property / 64] & (1ull << (property % 64)));
-    return result;
-}
-
-static inline EntityPropertySet
-AnyProperty(void)
-{
-    EntityPropertySet result = {};
-    for (size_t i = 0; i = EntityProperty_COUNT / 64; ++i)
-    {
-        result.properties[i] = (uint64_t)-1;
-    }
-    return result;
-}
-
 static inline Entity *
 GetEntity(EntityHandle handle)
 {
@@ -145,7 +86,8 @@ AddEntity(V2i p, Sprite sprite)
         result->handle = { (uint32_t)(result - entity_manager->entities), gen };
         result->p = p;
         result->health = 2;
-        result->sprite = sprite;
+        result->sprite_count = 1;
+        result->sprites[0] = sprite;
 
         MoveEntity(result, p);
     }
@@ -185,22 +127,48 @@ KillEntity(Entity *e)
     }
 }
 
-static inline bool
-NextEntity(Entity **entity_at)
+struct EntityIter
 {
-    Entity *e = *entity_at;
-    if (!e)
+    EntityPropertySet filter;
+    Entity *entity;
+};
+
+static inline EntityIter
+IterateEntities(EntityPropertyKind prop)
+{
+    EntityIter result = {};
+    result.filter = SetProperty(result.filter, EntityProperty_Alive);
+    result.filter = SetProperty(result.filter, prop);
+    result.entity = nullptr;
+    return result;
+}
+
+static inline EntityIter
+IterateEntities(EntityPropertySet filter = {})
+{
+    EntityPropertySet must_filter = {};
+
+    EntityIter result = {};
+    result.filter = SetProperty(result.filter, EntityProperty_Alive);
+    result.filter = CombineSet(result.filter, filter);
+    result.entity = nullptr;
+    return result;
+}
+
+static inline bool
+Next(EntityIter *iter)
+{
+    if (!iter->entity)
     {
-        e = entity_manager->entities - 1;
+        iter->entity = entity_manager->entities - 1;
     }
 
     Entity *end = entity_manager->entities + entity_manager->entity_count;
-    while (e < end)
+    while (iter->entity < end)
     {
-        e += 1;
-        if (HasProperty(e, EntityProperty_Alive))
+        iter->entity += 1;
+        if (HasProperties(iter->entity, iter->filter))
         {
-            *entity_at = e;
             return true;
         }
     }
@@ -223,8 +191,10 @@ FindClosestEntity(V2i p, EntityPropertyKind required_property, Entity *filter = 
 {
     uint32_t best_dist = UINT32_MAX;
     Entity *result = nullptr;
-    for (Entity *e = nullptr; NextEntity(&e);)
+    for (EntityIter iter = IterateEntities(); Next(&iter);)
     {
+        Entity *e = iter.entity;
+
         if (e == filter)
         {
             continue;
@@ -379,6 +349,14 @@ FindPath(Arena *arena, V2i start, V2i target)
         for (size_t i = 0; i < ArrayCount(possible_moves); ++i)
         {
             V2i p = top_node->p + possible_moves[i];
+            if ((p.x < 0) ||
+                (p.y < 0) ||
+                (p.x > WORLD_EXTENT_X) ||
+                (p.y > WORLD_EXTENT_Y))
+            {
+                continue;
+            }
+
             if (state->node_grid[p.x][p.y])
             {
                 continue;
@@ -476,59 +454,44 @@ PlayerAct(void)
 static inline void
 UpdateAndRenderEntities(void)
 {
-    static bool active = false;
-    if (Pressed(controller->interact))
-    {
-        active = true;
-    }
-
     if (entity_manager->turn_timer <= 0.0f)
     {
-        if (active && PlayerAct())
+        if (PlayerAct())
         {
             entity_manager->turn_timer += 0.10f;
-            for (Entity *e = nullptr; NextEntity(&e);)
+            for (EntityIter e_iter = IterateEntities(EntityProperty_Martins); Next(&e_iter);)
             {
+                Entity *e = e_iter.entity;
+
                 Clear(&entity_manager->turn_arena);
 
-                if (e == entity_manager->player)
+                Path best_path = {};
+                best_path.length = UINT32_MAX;
+
+                Entity *best_c = nullptr;
+
+                for (EntityIter c_iter = IterateEntities(EntityProperty_C); Next(&c_iter);)
                 {
-                    continue;
+                    Entity *c = c_iter.entity;
+
+                    Path path = FindPath(&entity_manager->turn_arena, e->p, c->p);
+                    if (path.length > 0 && path.length < best_path.length)
+                    {
+                        best_c = c;
+                        best_path = path;
+                    }
                 }
 
-                if (HasProperty(e, EntityProperty_Martins))
+                if (best_c)
                 {
-                    Path best_path = {};
-                    best_path.length = UINT32_MAX;
-
-                    Entity *best_c = nullptr;
-
-                    for (Entity *c = nullptr; NextEntity(&c);)
+                    V2i new_p = best_path.positions[0];
+                    if (AreEqual(new_p, best_c->p))
                     {
-                        if (!HasProperty(c, EntityProperty_C))
-                        {
-                            continue;
-                        }
-
-                        Path path = FindPath(&entity_manager->turn_arena, e->p, c->p);
-                        if (path.length > 0 && path.length < best_path.length)
-                        {
-                            best_c = c;
-                            best_path = path;
-                        }
+                        DamageEntity(best_c, 999);
                     }
-
-                    if (best_c)
+                    else
                     {
-                        V2i new_p = best_path.positions[0];
-                        if (AreEqual(new_p, best_c->p))
-                        {
-                            DamageEntity(best_c, 999);
-                        }
-                        else
-                        {
-                            MoveEntity(e, new_p);
-                        }
+                        MoveEntity(e, new_p);
                     }
                 }
             }
@@ -539,9 +502,23 @@ UpdateAndRenderEntities(void)
         entity_manager->turn_timer -= platform->dt;
     }
 
-    for (Entity *e = nullptr; NextEntity(&e);)
+    for (EntityIter iter = IterateEntities(); Next(&iter);)
     {
-        Sprite sprite = e->sprite;
+        Entity *e = iter.entity;
+
+        Sprite sprite = e->sprites[e->sprite_index];
+        if (e->sprite_anim_timer >= e->sprite_anim_rate)
+        {
+            e->sprite_anim_timer -= e->sprite_anim_rate;
+            e->sprite_index = e->sprite_index + 1;
+            if (e->sprite_index >= e->sprite_count)
+            {
+                e->sprite_index = 0;
+                e->sprite_anim_timer -= e->sprite_anim_pause_time;
+            }
+        }
+        e->sprite_anim_timer += platform->dt;
+
         if (e->flash_timer >= 0.0f)
         {
             sprite.foreground = e->flash_color;

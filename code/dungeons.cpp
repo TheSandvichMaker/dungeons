@@ -95,10 +95,12 @@ AppUpdateAndRender(Platform *platform_)
         AddRoom(MakeRect2iMinDim(1, 1, 16, 16));
 
         Entity *martins = AddEntity(MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1));
-        SetProperty(martins, EntityProperty_Martins);
+        SetProperty(martins, EntityProperty_Martins|EntityProperty_Invulnerable);
+
+        AddPlayer(MakeV2i(5, 6));
 
         RandomSeries entropy = MakeRandomSeries(0);
-        for (size_t i = 0; i < 10; ++i)
+        for (size_t i = 0; i < 15; ++i)
         {
             for (size_t attempt = 0; attempt < 100; ++attempt)
             {
@@ -108,12 +110,19 @@ AppUpdateAndRender(Platform *platform_)
                 {
                     Entity *c = AddEntity(spawn_p, MakeSprite('c'));
                     SetProperty(c, EntityProperty_C);
+                    if (0 == RandomChance(&entropy, 4))
+                    {
+                        c->sprite_anim_rate = 0.25f;
+                        c->sprite_anim_pause_time = 1.0f;
+                        c->sprites[1] = MakeSprite('c');
+                        c->sprites[2] = MakeSprite('+', MakeColor(255, 0, 0));
+                        c->sprites[3] = MakeSprite('+', MakeColor(0, 255, 0));
+                        c->sprite_count = 4;
+                    }
                     break;
                 }
             }
         }
-
-        // AddPlayer(MakeV2i(5, 6));
 #else
         GenerateWorld(0xDEADBEEF);
 #endif

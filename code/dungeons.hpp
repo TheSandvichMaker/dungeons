@@ -1,6 +1,8 @@
 #ifndef DUNGEONS_HPP
 #define DUNGEONS_HPP
 
+#include <stdarg.h>
+
 #include "dungeons_platform.hpp"
 #include "dungeons_intrinsics.hpp"
 #include "dungeons_shared.hpp"
