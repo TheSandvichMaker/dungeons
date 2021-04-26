@@ -94,10 +94,26 @@ AppUpdateAndRender(Platform *platform_)
 #if 1
         AddRoom(MakeRect2iMinDim(1, 1, 16, 16));
 
-        Entity *angry = AddEntity(MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1));
-        SetProperty(angry, EntityProperty_AngryDude);
+        Entity *martins = AddEntity(MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1));
+        SetProperty(martins, EntityProperty_Martins);
 
-        AddPlayer(MakeV2i(5, 6));
+        RandomSeries entropy = MakeRandomSeries(0);
+        for (size_t i = 0; i < 10; ++i)
+        {
+            for (size_t attempt = 0; attempt < 100; ++attempt)
+            {
+                V2i spawn_p = MakeV2i(RandomRange(&entropy, 2, 16),
+                                      RandomRange(&entropy, 2, 16));
+                if (!GetEntityAt(spawn_p))
+                {
+                    Entity *c = AddEntity(spawn_p, MakeSprite('c'));
+                    SetProperty(c, EntityProperty_C);
+                    break;
+                }
+            }
+        }
+
+        // AddPlayer(MakeV2i(5, 6));
 #else
         GenerateWorld(0xDEADBEEF);
 #endif
@@ -106,6 +122,32 @@ AppUpdateAndRender(Platform *platform_)
     }
 
     HandleController();
+
+    static bool erase = false;
+    if (Pressed(controller->alt_interact))
+    {
+        if (GetEntityAt(controller->world_mouse_p))
+        {
+            erase = true;
+        }
+        else
+        {
+            erase = false;
+        }
+    }
+
+    if (controller->alt_interact.ended_down)
+    {
+        Entity *e = GetEntityAt(controller->world_mouse_p);
+        if (erase && e)
+        {
+            KillEntity(e);
+        }
+        else if (!e)
+        {
+            AddWall(controller->world_mouse_p);
+        }
+    }
 
     BeginRender(Draw_World);
     UpdateAndRenderEntities();

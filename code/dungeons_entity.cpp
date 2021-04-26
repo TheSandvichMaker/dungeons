@@ -27,6 +27,36 @@ HasProperty(Entity *e, EntityPropertyKind property)
     return result;
 }
 
+static inline void
+SetProperty(EntityPropertySet *set, EntityPropertyKind property)
+{
+    set->properties[property / 64] |= 1ull << (property % 64);
+}
+
+static inline void
+UnsetProperty(EntityPropertySet *set, EntityPropertyKind property)
+{
+    set->properties[property / 64] &= ~(1ull << (property % 64));
+}
+
+static inline bool
+HasProperty(EntityPropertySet *set, EntityPropertyKind property)
+{
+    bool result = !!(set->properties[property / 64] & (1ull << (property % 64)));
+    return result;
+}
+
+static inline EntityPropertySet
+AnyProperty(void)
+{
+    EntityPropertySet result = {};
+    for (size_t i = 0; i = EntityProperty_COUNT / 64; ++i)
+    {
+        result.properties[i] = (uint64_t)-1;
+    }
+    return result;
+}
+
 static inline Entity *
 GetEntity(EntityHandle handle)
 {
@@ -189,13 +219,19 @@ GetEntityAt(V2i p)
 }
 
 static inline Entity *
-FindClosestEntity(V2i p, Entity *filter = nullptr)
+FindClosestEntity(V2i p, EntityPropertyKind required_property, Entity *filter = nullptr)
 {
     uint32_t best_dist = UINT32_MAX;
     Entity *result = nullptr;
     for (Entity *e = nullptr; NextEntity(&e);)
     {
         if (e == filter)
+        {
+            continue;
+        }
+
+        if (required_property != EntityProperty_None &&
+            !HasProperty(e, required_property))
         {
             continue;
         }
@@ -313,11 +349,6 @@ FindPath(Arena *arena, V2i start, V2i target)
     //
 
     Path result = {};
-    if (GetEntityAt(target))
-    {
-        return result;
-    }
-
     PathfindingState *state = PushStruct(temp_arena, PathfindingState);
 
     static const V2i possible_moves[] =
@@ -354,7 +385,7 @@ FindPath(Arena *arena, V2i start, V2i target)
             }
             state->node_grid[p.x][p.y] = true;
 
-            if (!GetEntityAt(p))
+            if (!GetEntityAt(p) || AreEqual(p, target))
             {
                 PathNode *node = PushStruct(temp_arena, PathNode);
                 node->prev = top_node;
@@ -377,11 +408,6 @@ FindPath(Arena *arena, V2i start, V2i target)
                 *insert_at = node;
 
                 node_count += 1;
-
-                if (AreEqual(p, target))
-                {
-                    target_node = node;
-                }
             }
         }
     }
@@ -389,7 +415,7 @@ FindPath(Arena *arena, V2i start, V2i target)
     if (target_node)
     {
         uint32_t path_length = 0;
-        for (PathNode *node = target_node; node; node = node->prev)
+        for (PathNode *node = target_node; node && node != first; node = node->prev)
         {
             path_length += 1;
         }
@@ -397,7 +423,7 @@ FindPath(Arena *arena, V2i start, V2i target)
         result.length = path_length;
         result.positions = PushArrayNoClear(arena, result.length, V2i);
         size_t i = path_length - 1;
-        for (PathNode *node = target_node; node; node = node->prev)
+        for (PathNode *node = target_node; node && node != first; node = node->prev)
         {
             result.positions[i--] = node->p;
         }
@@ -450,12 +476,62 @@ PlayerAct(void)
 static inline void
 UpdateAndRenderEntities(void)
 {
+    static bool active = false;
+    if (Pressed(controller->interact))
+    {
+        active = true;
+    }
+
     if (entity_manager->turn_timer <= 0.0f)
     {
-        if (PlayerAct())
+        if (active && PlayerAct())
         {
-            entity_manager->turn_timer += 0.05f;
-            // simulate everybody else
+            entity_manager->turn_timer += 0.10f;
+            for (Entity *e = nullptr; NextEntity(&e);)
+            {
+                Clear(&entity_manager->turn_arena);
+
+                if (e == entity_manager->player)
+                {
+                    continue;
+                }
+
+                if (HasProperty(e, EntityProperty_Martins))
+                {
+                    Path best_path = {};
+                    best_path.length = UINT32_MAX;
+
+                    Entity *best_c = nullptr;
+
+                    for (Entity *c = nullptr; NextEntity(&c);)
+                    {
+                        if (!HasProperty(c, EntityProperty_C))
+                        {
+                            continue;
+                        }
+
+                        Path path = FindPath(&entity_manager->turn_arena, e->p, c->p);
+                        if (path.length > 0 && path.length < best_path.length)
+                        {
+                            best_c = c;
+                            best_path = path;
+                        }
+                    }
+
+                    if (best_c)
+                    {
+                        V2i new_p = best_path.positions[0];
+                        if (AreEqual(new_p, best_c->p))
+                        {
+                            DamageEntity(best_c, 999);
+                        }
+                        else
+                        {
+                            MoveEntity(e, new_p);
+                        }
+                    }
+                }
+            }
         }
     }
     else

@@ -13,12 +13,20 @@ struct Path
 
 enum EntityPropertyKind
 {
+    EntityProperty_None,
     EntityProperty_Alive,
     EntityProperty_Dying,
     EntityProperty_PlayerControlled,
     EntityProperty_Invulnerable,
+    EntityProperty_Martins,
+    EntityProperty_C,
     EntityProperty_AngryDude,
     EntityProperty_COUNT,
+};
+
+struct EntityPropertySet
+{
+    uint64_t properties[(EntityProperty_COUNT + 63) / 64];
 };
 
 struct EntityHandle
