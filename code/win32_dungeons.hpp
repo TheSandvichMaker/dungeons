@@ -67,6 +67,11 @@ struct Win32State
     DWORD thread_local_index;
 
     Win32AllocationHeader allocation_sentinel;
+
+    TicketMutex log_mutex;
+    int log_line_count;
+    int log_line_first;
+    PlatformLogLine log_lines[PLATFORM_MAX_LOG_LINES];
 };
 
 #endif /* WIN32_DUNGEONS_HPP */

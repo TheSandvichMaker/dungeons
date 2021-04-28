@@ -37,33 +37,37 @@ Released(Button button)
 
 struct Input
 {
-};
-
-struct Controller
-{
     V2i mouse_p;
     V2i ui_mouse_p;
     V2i world_mouse_p;
 
-    Button left         = { "left" };
-    Button right        = { "right" };
-    Button up           = { "up" };
-    Button down         = { "down" };
+    Button north        = { "north" };
+    Button northeast    = { "northeast" };
+    Button east         = { "east" };
+    Button southeast    = { "southeast" };
+    Button south        = { "south" };
+    Button southwest    = { "southwest" };
+    Button west         = { "west" };
+    Button northwest    = { "northwest" };
+    Button here         = { "here" };
+
     Button interact     = { "interact" };
     Button alt_interact = { "alternative interact" };
+
+    Button *binding_map[PlatformInputCode_COUNT];
 };
-GLOBAL_STATE(Controller, controller);
+GLOBAL_STATE(Input, input);
 
 static inline Button *
 FirstButton(void)
 {
-    return &controller->left;
+    return &input->north;
 }
 
 static inline Button *
-LastButton(void)
+OnePastLastButton(void)
 {
-    return (Button *)(controller + 1);
+    return &input->alt_interact + 1;
 }
 
 #endif /* DUNGEONS_CONTROLLER_HPP */

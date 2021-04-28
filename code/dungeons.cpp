@@ -10,15 +10,6 @@
 
 // Ryan's text controls example: https://hatebin.com/ovcwtpsfmj
 
-static inline StringContainer
-PushEmptyStringContainer(Arena *arena, size_t capacity)
-{
-    StringContainer result = {};
-    result.capacity = capacity;
-    result.data = PushArray(arena, capacity, uint8_t);
-    return result;
-}
-
 static Font
 MakeFont(Bitmap bitmap, int32_t glyph_w, int32_t glyph_h)
 {
@@ -90,6 +81,7 @@ AppUpdateAndRender(Platform *platform_)
         game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font16x16.bmp"), 16, 16);
         game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font8x16.bmp"), 8, 16);
         InitializeRenderState(&platform->backbuffer, &game_state->world_font, &game_state->ui_font);
+        InitializeInputBindings();
 
 #if 1
         AddRoom(MakeRect2iMinDim(1, 1, 16, 16));
@@ -114,10 +106,9 @@ AppUpdateAndRender(Platform *platform_)
                     {
                         c->sprite_anim_rate = 0.25f;
                         c->sprite_anim_pause_time = 1.0f;
-                        c->sprites[1] = MakeSprite('c');
-                        c->sprites[2] = MakeSprite('+', MakeColor(255, 0, 0));
-                        c->sprites[3] = MakeSprite('+', MakeColor(0, 255, 0));
-                        c->sprite_count = 4;
+                        c->sprites[c->sprite_count++] = MakeSprite('c');
+                        c->sprites[c->sprite_count++] = MakeSprite('+', MakeColor(255, 0, 0));
+                        c->sprites[c->sprite_count++] = MakeSprite('+', MakeColor(0, 255, 0));
                     }
                     break;
                 }
@@ -130,12 +121,12 @@ AppUpdateAndRender(Platform *platform_)
         platform->app_initialized = true;
     }
 
-    HandleController();
+    HandleInput();
 
     static bool erase = false;
-    if (Pressed(controller->alt_interact))
+    if (Pressed(input->alt_interact))
     {
-        if (GetEntityAt(controller->world_mouse_p))
+        if (GetEntityAt(input->world_mouse_p))
         {
             erase = true;
         }
@@ -145,16 +136,16 @@ AppUpdateAndRender(Platform *platform_)
         }
     }
 
-    if (controller->alt_interact.ended_down)
+    if (input->alt_interact.ended_down)
     {
-        Entity *e = GetEntityAt(controller->world_mouse_p);
+        Entity *e = GetEntityAt(input->world_mouse_p);
         if (erase && e)
         {
             KillEntity(e);
         }
         else if (!e)
         {
-            AddWall(controller->world_mouse_p);
+            AddWall(input->world_mouse_p);
         }
     }
 

@@ -86,8 +86,7 @@ AddEntity(V2i p, Sprite sprite)
         result->handle = { (uint32_t)(result - entity_manager->entities), gen };
         result->p = p;
         result->health = 2;
-        result->sprite_count = 1;
-        result->sprites[0] = sprite;
+        result->sprites[result->sprite_count++] = sprite;
 
         MoveEntity(result, p);
     }
@@ -420,10 +419,14 @@ PlayerAct(void)
     }
 
     V2i move = MakeV2i(0, 0);
-    if (Triggered(controller->left))  move.x -= 1;
-    if (Triggered(controller->right)) move.x += 1;
-    if (Triggered(controller->up))    move.y += 1;
-    if (Triggered(controller->down))  move.y -= 1;
+    if (Triggered(input->north))     move += MakeV2i( 0,  1);
+    if (Triggered(input->northeast)) move += MakeV2i( 1,  1);
+    if (Triggered(input->east))      move += MakeV2i( 1,  0);
+    if (Triggered(input->southeast)) move += MakeV2i( 1, -1);
+    if (Triggered(input->south))     move += MakeV2i( 0, -1);
+    if (Triggered(input->southwest)) move += MakeV2i(-1, -1);
+    if (Triggered(input->west))      move += MakeV2i(-1,  0);
+    if (Triggered(input->northwest)) move += MakeV2i(-1,  1);
 
     if (!AreEqual(move, MakeV2i(0, 0)))
     {

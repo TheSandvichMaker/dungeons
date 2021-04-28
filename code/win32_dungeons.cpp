@@ -237,6 +237,114 @@ Win32_DebugPrint(char *fmt, ...)
 }
 
 static inline void
+Win32_LogPrint(PlatformLogLevel level, char *fmt, ...)
+{
+    Win32State *state = &win32_state;
+
+    Arena *arena = GetTempArena();
+    ScopedMemory temp(arena);
+
+    va_list args;
+    va_start(args, fmt);
+    char *formatted = FormatStringV(arena, fmt, args);
+    va_end(args);
+
+    char *at = formatted;
+    while (*at)
+    {
+        char *line_start = at;
+        while (*at && at[0] != '\n' && !(at[0] == '\r' && at[1] == '\n'))
+        {
+            at += 1;
+        }
+        size_t line_length = at - line_start + 1;
+
+        if (line_length > PLATFORM_LOG_LINE_SIZE)
+        {
+            line_length = PLATFORM_LOG_LINE_SIZE;
+        }
+
+        BeginTicketMutex(&state->log_mutex);
+
+        PlatformLogLine *line = &state->log_lines[(state->log_line_first + state->log_line_count) % PLATFORM_MAX_LOG_LINES];
+        if (state->log_line_count < PLATFORM_MAX_LOG_LINES)
+        {
+            state->log_line_count += 1;
+        }
+        else
+        {
+            state->log_line_first += 1;
+        }
+
+        EndTicketMutex(&state->log_mutex);
+
+        CopySize(line_length, line_start, line->text);
+        line->text[line_length] = 0;
+
+        line->level = level;
+
+        while (*at && (at[0] == '\n' || (at[0] == '\r' && at[1] == '\n')))
+        {
+            at += 1;
+        }
+    }
+}
+
+static inline PlatformLogLine *
+Win32_GetFirstLogLine(void)
+{
+    PlatformLogLine *result = &win32_state.log_lines[win32_state.log_line_first];
+    return result;
+}
+
+static inline PlatformLogLine *
+Win32_GetLatestLogLine(void)
+{
+    PlatformLogLine *result = &win32_state.log_lines[(win32_state.log_line_first + win32_state.log_line_count - 1) % PLATFORM_MAX_LOG_LINES];
+    return result;
+}
+
+static inline PlatformLogLine *
+Win32_GetNextLogLine(PlatformLogLine *line)
+{
+    Assert((line >= win32_state.log_lines) &&
+           (line < (win32_state.log_lines + PLATFORM_MAX_LOG_LINES)));
+
+    PlatformLogLine *next = line + 1;
+    if (next >= (win32_state.log_lines + PLATFORM_MAX_LOG_LINES))
+    {
+        next -= PLATFORM_MAX_LOG_LINES;
+    }
+
+    if (next == &win32_state.log_lines[(win32_state.log_line_first + win32_state.log_line_count) % PLATFORM_MAX_LOG_LINES])
+    {
+        return nullptr;
+    }
+
+    return next;
+}
+
+static inline PlatformLogLine *
+Win32_GetPrevLogLine(PlatformLogLine *line)
+{
+    Assert((line >= win32_state.log_lines) &&
+           (line < (win32_state.log_lines + PLATFORM_MAX_LOG_LINES)));
+
+    if (line == &win32_state.log_lines[win32_state.log_line_first])
+    {
+        return nullptr;
+    }
+
+    PlatformLogLine *prev = line - 1;
+    if (prev < win32_state.log_lines)
+    {
+        prev += PLATFORM_MAX_LOG_LINES;
+    }
+
+    return prev;
+}
+
+static inline void
 Win32_ReportError(PlatformErrorType type, char *error, ...)
 {
     Arena *arena = GetTempArena();
@@ -818,6 +926,11 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     platform->high_priority_queue = &high_priority_queue;
     platform->low_priority_queue = &low_priority_queue;
     platform->DebugPrint = Win32_DebugPrint;
+    platform->LogPrint = Win32_LogPrint;
+    platform->GetFirstLogLine = Win32_GetFirstLogLine;
+    platform->GetLatestLogLine = Win32_GetLatestLogLine;
+    platform->GetNextLogLine = Win32_GetNextLogLine;
+    platform->GetPrevLogLine = Win32_GetPrevLogLine;
     platform->ReportError = Win32_ReportError;
     platform->AllocateMemory = Win32_Allocate;
     platform->ReserveMemory = Win32_Reserve;
@@ -917,7 +1030,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
                         event->alt_down = alt_down;
                         event->ctrl_down = ctrl_down;
                         event->shift_down = shift_down;
-                        event->key_code = (PlatformKeyCode)vk_code;
+                        event->input_code = (PlatformInputCode)vk_code; // I gave myself a 1:1 mapping of VK codes to platform input codes, so that's nice.
 
                         TranslateMessage(&message);
                     }
@@ -929,25 +1042,40 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
                 case WM_MBUTTONUP:
                 case WM_RBUTTONDOWN:
                 case WM_RBUTTONUP:
+                case WM_XBUTTONDOWN:
+                case WM_XBUTTONUP:
                 {
                     PlatformEvent *event = PushEvent();
                     event->pressed = (message.message == WM_LBUTTONDOWN ||
                                       message.message == WM_MBUTTONDOWN ||
-                                      message.message == WM_RBUTTONDOWN);
+                                      message.message == WM_RBUTTONDOWN ||
+                                      message.message == WM_XBUTTONDOWN);
                     event->type = (event->pressed ? PlatformEvent_MouseDown : PlatformEvent_MouseUp);
                     switch (message.message)
                     {
                         case WM_LBUTTONDOWN: case WM_LBUTTONUP:
                         {
-                            event->mouse_button = PlatformMouseButton_Left;
+                            event->input_code = PlatformInputCode_MouseLeft;
                         } break;
                         case WM_MBUTTONDOWN: case WM_MBUTTONUP:
                         {
-                            event->mouse_button = PlatformMouseButton_Middle;
+                            event->input_code = PlatformInputCode_MouseMiddle;
                         } break;
                         case WM_RBUTTONDOWN: case WM_RBUTTONUP:
                         {
-                            event->mouse_button = PlatformMouseButton_Right;
+                            event->input_code = PlatformInputCode_MouseRight;
+                        } break;
+                        case WM_XBUTTONDOWN: case WM_XBUTTONUP:
+                        {
+                            if (GET_XBUTTON_WPARAM(message.wParam) == XBUTTON1)
+                            {
+                                event->input_code = PlatformInputCode_MouseExtended0;
+                            }
+                            else
+                            {
+                                Assert(GET_XBUTTON_WPARAM(message.wParam) == XBUTTON2);
+                                event->input_code = PlatformInputCode_MouseExtended1;
+                            }
                         } break;
                     }
                 } break;

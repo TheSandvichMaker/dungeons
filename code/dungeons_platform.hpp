@@ -62,6 +62,45 @@
 
 #include "dungeons_types.hpp"
 #include "dungeons_intrinsics.hpp"
+#if COMPILER_MSVC
+#define WIN32_LEAN_AND_MEAN
+#define WIN32_EXTRA_LEAN
+#include <windows.h>
+#endif
+
+struct TicketMutex
+{
+    volatile uint32_t ticket;
+    volatile uint32_t serving;
+};
+
+#if COMPILER_MSVC
+static inline uint32_t
+AtomicAdd(volatile uint32_t *dest, uint32_t value)
+{
+    // NOTE: This returns the value _before_ adding
+    uint32_t result = (uint32_t)_InterlockedExchangeAdd((volatile LONG *)dest, value);
+    return result;
+}
+#else
+// todo...
+#endif
+
+static inline void
+BeginTicketMutex(TicketMutex *mutex)
+{
+    uint32_t ticket = AtomicAdd(&mutex->ticket, 1);
+    while (ticket != mutex->serving)
+    {
+        _mm_pause();
+    }
+}
+
+static inline void
+EndTicketMutex(TicketMutex *mutex)
+{
+    AtomicAdd(&mutex->serving, 1);
+}
 
 enum PlatformEventType
 {
@@ -99,168 +138,183 @@ enum PlatformMouseButton
 {
     PlatformMouseButton_None,
 
-    PlatformMouseButton_Left,
-    PlatformMouseButton_Middle,
-    PlatformMouseButton_Right,
-
     PlatformMouseButton_COUNT,
 };
 
-enum PlatformKeyCode
+enum PlatformInputCode
 {
-    PlatformKeyCode_None           = 0x0,
-    PlatformKeyCode_LButton        = 0x1,
-    PlatformKeyCode_RButton        = 0x2,
-    PlatformKeyCode_Cancel         = 0x3,
-    PlatformKeyCode_MButton        = 0x4,
-    PlatformKeyCode_XButton1       = 0x5,
-    PlatformKeyCode_XButton2       = 0x6,
-    PlatformKeyCode_Back           = 0x8,
-    PlatformKeyCode_Tab            = 0x9,
-    PlatformKeyCode_Clear          = 0xC,
-    PlatformKeyCode_Return         = 0xD,
-    PlatformKeyCode_Shift          = 0x10,
-    PlatformKeyCode_Control        = 0x11,
-    PlatformKeyCode_Alt            = 0x12,
-    PlatformKeyCode_Pause          = 0x13,
-    PlatformKeyCode_CapsLock       = 0x14,
-    PlatformKeyCode_Kana           = 0x15,
-    PlatformKeyCode_Hangul         = 0x15,
-    PlatformKeyCode_Junja          = 0x17,
-    PlatformKeyCode_Final          = 0x18,
-    PlatformKeyCode_Hanja          = 0x19,
-    PlatformKeyCode_Kanji          = 0x19,
-    PlatformKeyCode_Escape         = 0x1B,
-    PlatformKeyCode_Convert        = 0x1C,
-    PlatformKeyCode_NonConvert     = 0x1D,
-    PlatformKeyCode_Accept         = 0x1E,
-    PlatformKeyCode_ModeChange     = 0x1F,
-    PlatformKeyCode_Space          = 0x20,
-    PlatformKeyCode_PageUp         = 0x21,
-    PlatformKeyCode_PageDown       = 0x22,
-    PlatformKeyCode_End            = 0x23,
-    PlatformKeyCode_Home           = 0x24,
-    PlatformKeyCode_Left           = 0x25,
-    PlatformKeyCode_Up             = 0x26,
-    PlatformKeyCode_Right          = 0x27,
-    PlatformKeyCode_Down           = 0x28,
-    PlatformKeyCode_Select         = 0x29,
-    PlatformKeyCode_Print          = 0x2A,
-    PlatformKeyCode_Execute        = 0x2B,
-    PlatformKeyCode_PrintScreen    = 0x2C,
-    PlatformKeyCode_Insert         = 0x2D,
-    PlatformKeyCode_Delete         = 0x2E,
-    PlatformKeyCode_Help           = 0x2F,
-    PlatformKeyCode_0              = '0',
-    PlatformKeyCode_1              = '1',
-    PlatformKeyCode_2              = '2',
-    PlatformKeyCode_3              = '3',
-    PlatformKeyCode_4              = '4',
-    PlatformKeyCode_5              = '5',
-    PlatformKeyCode_6              = '6',
-    PlatformKeyCode_7              = '7',
-    PlatformKeyCode_8              = '8',
-    PlatformKeyCode_9              = '9',
+    //
+    // Key codes
+    //
+
+    PlatformInputCode_None           = 0x0,
+    PlatformInputCode_LButton        = 0x1,
+    PlatformInputCode_RButton        = 0x2,
+    PlatformInputCode_Cancel         = 0x3,
+    PlatformInputCode_MButton        = 0x4,
+    PlatformInputCode_XButton1       = 0x5,
+    PlatformInputCode_XButton2       = 0x6,
+    PlatformInputCode_Back           = 0x8,
+    PlatformInputCode_Tab            = 0x9,
+    PlatformInputCode_Clear          = 0xC,
+    PlatformInputCode_Return         = 0xD,
+    PlatformInputCode_Shift          = 0x10,
+    PlatformInputCode_Control        = 0x11,
+    PlatformInputCode_Alt            = 0x12,
+    PlatformInputCode_Pause          = 0x13,
+    PlatformInputCode_CapsLock       = 0x14,
+    PlatformInputCode_Kana           = 0x15,
+    PlatformInputCode_Hangul         = 0x15,
+    PlatformInputCode_Junja          = 0x17,
+    PlatformInputCode_Final          = 0x18,
+    PlatformInputCode_Hanja          = 0x19,
+    PlatformInputCode_Kanji          = 0x19,
+    PlatformInputCode_Escape         = 0x1B,
+    PlatformInputCode_Convert        = 0x1C,
+    PlatformInputCode_NonConvert     = 0x1D,
+    PlatformInputCode_Accept         = 0x1E,
+    PlatformInputCode_ModeChange     = 0x1F,
+    PlatformInputCode_Space          = 0x20,
+    PlatformInputCode_PageUp         = 0x21,
+    PlatformInputCode_PageDown       = 0x22,
+    PlatformInputCode_End            = 0x23,
+    PlatformInputCode_Home           = 0x24,
+    PlatformInputCode_Left           = 0x25,
+    PlatformInputCode_Up             = 0x26,
+    PlatformInputCode_Right          = 0x27,
+    PlatformInputCode_Down           = 0x28,
+    PlatformInputCode_Select         = 0x29,
+    PlatformInputCode_Print          = 0x2A,
+    PlatformInputCode_Execute        = 0x2B,
+    PlatformInputCode_PrintScreen    = 0x2C,
+    PlatformInputCode_Insert         = 0x2D,
+    PlatformInputCode_Delete         = 0x2E,
+    PlatformInputCode_Help           = 0x2F,
+    PlatformInputCode_0              = '0',
+    PlatformInputCode_1              = '1',
+    PlatformInputCode_2              = '2',
+    PlatformInputCode_3              = '3',
+    PlatformInputCode_4              = '4',
+    PlatformInputCode_5              = '5',
+    PlatformInputCode_6              = '6',
+    PlatformInputCode_7              = '7',
+    PlatformInputCode_8              = '8',
+    PlatformInputCode_9              = '9',
     /* 0x3A - 0x40: undefined */
-    PlatformKeyCode_A              = 'A',
-    PlatformKeyCode_B              = 'B',
-    PlatformKeyCode_C              = 'C',
-    PlatformKeyCode_D              = 'D',
-    PlatformKeyCode_E              = 'E',
-    PlatformKeyCode_F              = 'F',
-    PlatformKeyCode_G              = 'G',
-    PlatformKeyCode_H              = 'H',
-    PlatformKeyCode_I              = 'I',
-    PlatformKeyCode_J              = 'J',
-    PlatformKeyCode_K              = 'K',
-    PlatformKeyCode_L              = 'L',
-    PlatformKeyCode_M              = 'M',
-    PlatformKeyCode_N              = 'N',
-    PlatformKeyCode_O              = 'O',
-    PlatformKeyCode_P              = 'P',
-    PlatformKeyCode_Q              = 'Q',
-    PlatformKeyCode_R              = 'R',
-    PlatformKeyCode_S              = 'S',
-    PlatformKeyCode_T              = 'T',
-    PlatformKeyCode_U              = 'U',
-    PlatformKeyCode_V              = 'V',
-    PlatformKeyCode_W              = 'W',
-    PlatformKeyCode_X              = 'X',
-    PlatformKeyCode_Y              = 'Y',
-    PlatformKeyCode_Z              = 'Z',
-    PlatformKeyCode_LSys           = 0x5B,
-    PlatformKeyCode_RSys           = 0x5C,
-    PlatformKeyCode_Apps           = 0x5D,
-    PlatformKeyCode_Sleep          = 0x5f,
-    PlatformKeyCode_Numpad0        = 0x60,
-    PlatformKeyCode_Numpad1        = 0x61,
-    PlatformKeyCode_Numpad2        = 0x62,
-    PlatformKeyCode_Numpad3        = 0x63,
-    PlatformKeyCode_Numpad4        = 0x64,
-    PlatformKeyCode_Numpad5        = 0x65,
-    PlatformKeyCode_Numpad6        = 0x66,
-    PlatformKeyCode_Numpad7        = 0x67,
-    PlatformKeyCode_Numpad8        = 0x68,
-    PlatformKeyCode_Numpad9        = 0x69,
-    PlatformKeyCode_Multiply       = 0x6A,
-    PlatformKeyCode_Add            = 0x6B,
-    PlatformKeyCode_Separator      = 0x6C,
-    PlatformKeyCode_Subtract       = 0x6D,
-    PlatformKeyCode_Decimal        = 0x6E,
-    PlatformKeyCode_Divide         = 0x6f,
-    PlatformKeyCode_F1             = 0x70,
-    PlatformKeyCode_F2             = 0x71,
-    PlatformKeyCode_F3             = 0x72,
-    PlatformKeyCode_F4             = 0x73,
-    PlatformKeyCode_F5             = 0x74,
-    PlatformKeyCode_F6             = 0x75,
-    PlatformKeyCode_F7             = 0x76,
-    PlatformKeyCode_F8             = 0x77,
-    PlatformKeyCode_F9             = 0x78,
-    PlatformKeyCode_F10            = 0x79,
-    PlatformKeyCode_F11            = 0x7A,
-    PlatformKeyCode_F12            = 0x7B,
-    PlatformKeyCode_F13            = 0x7C,
-    PlatformKeyCode_F14            = 0x7D,
-    PlatformKeyCode_F15            = 0x7E,
-    PlatformKeyCode_F16            = 0x7F,
-    PlatformKeyCode_F17            = 0x80,
-    PlatformKeyCode_F18            = 0x81,
-    PlatformKeyCode_F19            = 0x82,
-    PlatformKeyCode_F20            = 0x83,
-    PlatformKeyCode_F21            = 0x84,
-    PlatformKeyCode_F22            = 0x85,
-    PlatformKeyCode_F23            = 0x86,
-    PlatformKeyCode_F24            = 0x87,
-    PlatformKeyCode_Numlock        = 0x90,
-    PlatformKeyCode_Scroll         = 0x91,
-    PlatformKeyCode_LShift         = 0xA0,
-    PlatformKeyCode_RShift         = 0xA1,
-    PlatformKeyCode_LControl       = 0xA2,
-    PlatformKeyCode_RControl       = 0xA3,
-    PlatformKeyCode_LAlt           = 0xA4,
-    PlatformKeyCode_RAlt           = 0xA5,
+    PlatformInputCode_A              = 'A',
+    PlatformInputCode_B              = 'B',
+    PlatformInputCode_C              = 'C',
+    PlatformInputCode_D              = 'D',
+    PlatformInputCode_E              = 'E',
+    PlatformInputCode_F              = 'F',
+    PlatformInputCode_G              = 'G',
+    PlatformInputCode_H              = 'H',
+    PlatformInputCode_I              = 'I',
+    PlatformInputCode_J              = 'J',
+    PlatformInputCode_K              = 'K',
+    PlatformInputCode_L              = 'L',
+    PlatformInputCode_M              = 'M',
+    PlatformInputCode_N              = 'N',
+    PlatformInputCode_O              = 'O',
+    PlatformInputCode_P              = 'P',
+    PlatformInputCode_Q              = 'Q',
+    PlatformInputCode_R              = 'R',
+    PlatformInputCode_S              = 'S',
+    PlatformInputCode_T              = 'T',
+    PlatformInputCode_U              = 'U',
+    PlatformInputCode_V              = 'V',
+    PlatformInputCode_W              = 'W',
+    PlatformInputCode_X              = 'X',
+    PlatformInputCode_Y              = 'Y',
+    PlatformInputCode_Z              = 'Z',
+    PlatformInputCode_LSys           = 0x5B,
+    PlatformInputCode_RSys           = 0x5C,
+    PlatformInputCode_Apps           = 0x5D,
+    PlatformInputCode_Sleep          = 0x5f,
+    PlatformInputCode_Numpad0        = 0x60,
+    PlatformInputCode_Numpad1        = 0x61,
+    PlatformInputCode_Numpad2        = 0x62,
+    PlatformInputCode_Numpad3        = 0x63,
+    PlatformInputCode_Numpad4        = 0x64,
+    PlatformInputCode_Numpad5        = 0x65,
+    PlatformInputCode_Numpad6        = 0x66,
+    PlatformInputCode_Numpad7        = 0x67,
+    PlatformInputCode_Numpad8        = 0x68,
+    PlatformInputCode_Numpad9        = 0x69,
+    PlatformInputCode_Multiply       = 0x6A,
+    PlatformInputCode_Add            = 0x6B,
+    PlatformInputCode_Separator      = 0x6C,
+    PlatformInputCode_Subtract       = 0x6D,
+    PlatformInputCode_Decimal        = 0x6E,
+    PlatformInputCode_Divide         = 0x6f,
+    PlatformInputCode_F1             = 0x70,
+    PlatformInputCode_F2             = 0x71,
+    PlatformInputCode_F3             = 0x72,
+    PlatformInputCode_F4             = 0x73,
+    PlatformInputCode_F5             = 0x74,
+    PlatformInputCode_F6             = 0x75,
+    PlatformInputCode_F7             = 0x76,
+    PlatformInputCode_F8             = 0x77,
+    PlatformInputCode_F9             = 0x78,
+    PlatformInputCode_F10            = 0x79,
+    PlatformInputCode_F11            = 0x7A,
+    PlatformInputCode_F12            = 0x7B,
+    PlatformInputCode_F13            = 0x7C,
+    PlatformInputCode_F14            = 0x7D,
+    PlatformInputCode_F15            = 0x7E,
+    PlatformInputCode_F16            = 0x7F,
+    PlatformInputCode_F17            = 0x80,
+    PlatformInputCode_F18            = 0x81,
+    PlatformInputCode_F19            = 0x82,
+    PlatformInputCode_F20            = 0x83,
+    PlatformInputCode_F21            = 0x84,
+    PlatformInputCode_F22            = 0x85,
+    PlatformInputCode_F23            = 0x86,
+    PlatformInputCode_F24            = 0x87,
+    PlatformInputCode_Numlock        = 0x90,
+    PlatformInputCode_Scroll         = 0x91,
+    PlatformInputCode_LShift         = 0xA0,
+    PlatformInputCode_RShift         = 0xA1,
+    PlatformInputCode_LControl       = 0xA2,
+    PlatformInputCode_RControl       = 0xA3,
+    PlatformInputCode_LAlt           = 0xA4,
+    PlatformInputCode_RAlt           = 0xA5,
     /* 0xA6 - 0xAC: browser keys, not sure what's up with that */
-    PlatformKeyCode_VolumeMute     = 0xAD,
-    PlatformKeyCode_VolumeDown     = 0xAE,
-    PlatformKeyCode_VolumeUp       = 0xAF,
-    PlatformKeyCode_MediaNextTrack = 0xB0,
-    PlatformKeyCode_MediaPrevTrack = 0xB1,
+    PlatformInputCode_VolumeMute     = 0xAD,
+    PlatformInputCode_VolumeDown     = 0xAE,
+    PlatformInputCode_VolumeUp       = 0xAF,
+    PlatformInputCode_MediaNextTrack = 0xB0,
+    PlatformInputCode_MediaPrevTrack = 0xB1,
     /* 0xB5 - 0xB7: "launch" keys, not sure what's up with that */
-    PlatformKeyCode_Oem1           = 0xBA, // misc characters, us standard: ';:'
-    PlatformKeyCode_Plus           = 0xBB,
-    PlatformKeyCode_Comma          = 0xBC,
-    PlatformKeyCode_Minus          = 0xBD,
-    PlatformKeyCode_Period         = 0xBE,
-    PlatformKeyCode_Oem2           = 0xBF, // misc characters, us standard: '/?'
-    PlatformKeyCode_Oem3           = 0xC0, // misc characters, us standard: '~'
+    PlatformInputCode_Oem1           = 0xBA, // misc characters, us standard: ';:'
+    PlatformInputCode_Plus           = 0xBB,
+    PlatformInputCode_Comma          = 0xBC,
+    PlatformInputCode_Minus          = 0xBD,
+    PlatformInputCode_Period         = 0xBE,
+    PlatformInputCode_Oem2           = 0xBF, // misc characters, us standard: '/?'
+    PlatformInputCode_Oem3           = 0xC0, // misc characters, us standard: '~'
     /* 0xC1 - 0xDA: reserved / unassigned */
     /* 0xDB - 0xF5: more miscellanious OEM codes I'm ommitting for now */
     /* 0xF6 - 0xF9: keys I've never heard of */
-    PlatformKeyCode_Play           = 0xFA,
-    PlatformKeyCode_Zoom           = 0xFB,
-    PlatformKeyCode_OemClear       = 0xFE,
-    PlatformKeyCode_COUNT,
+    PlatformInputCode_Play           = 0xFA,
+    PlatformInputCode_Zoom           = 0xFB,
+    PlatformInputCode_OemClear       = 0xFE,
+
+    //
+    // Mouse buttons
+    //
+
+    PlatformInputCode_MouseLeft,
+    PlatformInputCode_MouseMiddle,
+    PlatformInputCode_MouseRight,
+    PlatformInputCode_MouseExtended0,
+    PlatformInputCode_MouseExtended1,
+
+    //
+    //
+    //
+
+    PlatformInputCode_COUNT,
 };
 
 struct PlatformEvent
@@ -274,8 +328,7 @@ struct PlatformEvent
     bool ctrl_down;
     bool shift_down;
 
-    PlatformMouseButton mouse_button;
-    PlatformKeyCode key_code;
+    PlatformInputCode input_code;
 
     int text_length;
     char *text;
@@ -312,6 +365,22 @@ struct PlatformJobQueue;
 #define PLATFORM_JOB(name) void name(void *args)
 typedef PLATFORM_JOB(PlatformJobProc);
 
+#define PLATFORM_MAX_LOG_LINES 1024
+#define PLATFORM_LOG_LINE_SIZE 1024
+
+enum PlatformLogLevel
+{
+    PlatformLogLevel_Info    = 1,
+    PlatformLogLevel_Warning = 2,
+    PlatformLogLevel_Error   = 10,
+};
+
+struct PlatformLogLine
+{
+    PlatformLogLevel level;
+    char text[PLATFORM_LOG_LINE_SIZE];
+};
+
 struct Platform
 {
     bool exit_requested;
@@ -332,13 +401,19 @@ struct Platform
     int32_t render_w, render_h;
     Bitmap backbuffer;
 
-    void (*DebugPrint)(char *message, ...);
-    void (*ReportError)(PlatformErrorType type, char *message, ...);
+    void (*DebugPrint)(char *fmt, ...);
+    void (*LogPrint)(PlatformLogLevel level, char *fmt, ...);
+    void (*ReportError)(PlatformErrorType type, char *fmt, ...);
 
-    size_t page_size;
+    PlatformLogLine *(*GetFirstLogLine)(void);
+    PlatformLogLine *(*GetLatestLogLine)(void);
+    PlatformLogLine *(*GetNextLogLine)(PlatformLogLine *);
+    PlatformLogLine *(*GetPrevLogLine)(PlatformLogLine *);
+
     PlatformJobQueue *high_priority_queue;
     PlatformJobQueue *low_priority_queue;
 
+    size_t page_size;
     void *(*AllocateMemory)(size_t size, uint32_t flags, const char *tag);
     void *(*ReserveMemory)(size_t size, uint32_t flags, const char *tag);
     void *(*CommitMemory)(void *location, size_t size);
