@@ -153,7 +153,7 @@ Reset(EntityIter iter)
 }
 
 static inline EntityIter
-IterateEntities(EntityPropertySet filter = {})
+IterateAllEntities(EntityPropertySet filter = {})
 {
     EntityPropertySet must_filter = {};
 
@@ -171,9 +171,9 @@ IterateEntities(EntityPropertySet filter = {})
 }
 
 static inline EntityIter
-IterateEntities(EntityPropertyKind prop)
+IterateAllEntities(EntityPropertyKind prop)
 {
-    return IterateEntities(MakeSet(prop));
+    return IterateAllEntities(MakeSet(prop));
 }
 
 #define IterateEntityList(list, next_pointer, ...) \
@@ -267,7 +267,7 @@ FindClosestEntity(V2i p, EntityPropertyKind required_property, Entity *filter = 
 {
     uint32_t best_dist = UINT32_MAX;
     Entity *result = nullptr;
-    for (EntityIter iter = IterateEntities(); IsValid(iter); Next(&iter))
+    for (EntityIter iter = IterateAllEntities(); IsValid(iter); Next(&iter))
     {
         Entity *e = iter.entity;
 
@@ -381,7 +381,8 @@ struct PathNode
 
 struct PathfindingState
 {
-    bool node_hash[512];
+    // NOTE: No protection against collisions. Spicy!!!
+    bool node_hash[1024];
 };
 
 static inline Path
@@ -440,8 +441,6 @@ FindPath(Arena *arena, V2i start, V2i target)
                 node->prev = top_node;
                 node->p = p;
                 node->cost = top_node->cost + Length(possible_moves[i]); /* + DiagonalDistance(p, target); */
-
-                // DrawTile(Draw_World, p, MakeSprite(Glyph_Tone25, MakeColor(0, 255, 255), MakeColor(0, 127, 127)));
 
                 PathNode **insert_at = &queue;
                 for (; *insert_at; insert_at = &(*insert_at)->next)
@@ -541,7 +540,7 @@ UpdateAndRenderEntities(void)
         if (PlayerAct())
         {
             // entity_manager->turn_timer += 0.10f;
-            for (EntityIter it = IterateEntities(EntityProperty_Martins); IsValid(it); Next(&it))
+            for (EntityIter it = IterateAllEntities(EntityProperty_Martins); IsValid(it); Next(&it))
             {
                 Entity *e = it.entity;
 
@@ -552,7 +551,7 @@ UpdateAndRenderEntities(void)
 
                 Entity *best_c = nullptr;
 
-                for (EntityIter c_it = IterateEntities(EntityProperty_C); IsValid(c_it); Next(&c_it))
+                for (EntityIter c_it = IterateAllEntities(EntityProperty_C); IsValid(c_it); Next(&c_it))
                 {
                     Entity *c = c_it.entity;
 
@@ -584,7 +583,7 @@ UpdateAndRenderEntities(void)
         entity_manager->turn_timer -= platform->dt;
     }
 
-    for (EntityIter it = IterateEntities(); IsValid(it); Next(&it))
+    for (EntityIter it = IterateAllEntities(); IsValid(it); Next(&it))
     {
         Entity *e = it.entity;
 

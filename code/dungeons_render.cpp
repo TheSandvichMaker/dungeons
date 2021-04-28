@@ -280,6 +280,23 @@ DrawTile(DrawMode mode, V2i tile_p, Sprite sprite)
 }
 
 static inline void
+DrawText(DrawMode mode, V2i p, String text, Color foreground, Color background)
+{
+    V2i at = p;
+
+    Sprite sprite = {};
+    sprite.foreground = foreground;
+    sprite.background = background;
+
+    for (size_t i = 0; i < text.size; ++i)
+    {
+        sprite.glyph = text.data[i];
+        DrawTile(mode, at, sprite);
+        at.x += 1;
+    }
+}
+
+static inline void
 DrawRect(DrawMode mode, const Rect2i &rect, Color foreground, Color background)
 {
     uint32_t left   = Wall_Left;

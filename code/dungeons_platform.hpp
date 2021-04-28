@@ -62,10 +62,10 @@
 
 #include "dungeons_types.hpp"
 #include "dungeons_intrinsics.hpp"
+
 #if COMPILER_MSVC
-#define WIN32_LEAN_AND_MEAN
-#define WIN32_EXTRA_LEAN
-#include <windows.h>
+#define _AMD64_
+#include <windef.h>
 #endif
 
 struct TicketMutex

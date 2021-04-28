@@ -2,6 +2,7 @@
 #define DUNGEONS_HPP
 
 #include <stdarg.h>
+#include <stdio.h>
 
 #include "dungeons_platform.hpp"
 #include "dungeons_intrinsics.hpp"

@@ -21,3 +21,44 @@ AreEqual(const String &a, const String &b)
 
     return result;
 }
+
+static inline String
+FormatStringV(Arena *arena, char *fmt, va_list args_init)
+{
+    va_list args_size;
+    va_copy(args_size, args_init);
+
+    va_list args_fmt;
+    va_copy(args_fmt, args_init);
+
+    int chars_required = vsnprintf(nullptr, 0, fmt, args_size) + 1;
+    va_end(args_size);
+
+    String result = {};
+    result.size = chars_required - 1;
+    result.data = PushArrayNoClear(arena, chars_required, uint8_t);
+    vsnprintf((char *)result.data, chars_required, fmt, args_fmt);
+    va_end(args_fmt);
+
+    return result;
+}
+
+static inline String
+FormatString(Arena *arena, char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    String result = FormatStringV(arena, fmt, args);
+    va_end(args);
+    return result;
+}
+
+static inline String
+FormatTempString(char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    String result = FormatStringV(GetTempArena(), fmt, args);
+    va_end(args);
+    return result;
+}

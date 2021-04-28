@@ -153,9 +153,16 @@ AppUpdateAndRender(Platform *platform_)
     }
 
     BeginRender();
+
     UpdateAndRenderEntities();
 
     DrawRect(Draw_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 12, 12), COLOR_WHITE, COLOR_BLACK);
+    if (entity_manager->player)
+    {
+        DrawText(Draw_Ui, MakeV2i(4, render_state->ui_top_right.y - 12),
+                 FormatTempString("Player x: %d, y: %d", entity_manager->player->p.x, entity_manager->player->p.y),
+                 COLOR_WHITE, COLOR_BLACK);
+    }
 
     EndRender();
 }
