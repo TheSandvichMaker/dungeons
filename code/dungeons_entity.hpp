@@ -18,6 +18,7 @@ enum EntityPropertyKind
     EntityProperty_Blocking,
     EntityProperty_PlayerControlled,
     EntityProperty_Invulnerable,
+    EntityProperty_Item,
     EntityProperty_Martins,
     EntityProperty_C,
     EntityProperty_AngryDude,
@@ -60,6 +61,11 @@ struct Entity
     EntityHandle handle;
 
     Entity *next_on_tile;
+    Entity *next_in_inventory;
+
+    Entity *first_in_inventory;
+
+    String name;
 
     V2i p;
     int32_t health;

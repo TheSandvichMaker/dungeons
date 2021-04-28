@@ -57,7 +57,7 @@ MoveEntity(Entity *e, V2i p)
 }
 
 static inline Entity *
-AddEntity(V2i p, Sprite sprite, EntityPropertySet initial_properties = {})
+AddEntity(String name, V2i p, Sprite sprite, EntityPropertySet initial_properties = {})
 {
     Entity *result = nullptr;
     for (size_t i = 0; i < entity_manager->entity_count; ++i)
@@ -84,6 +84,7 @@ AddEntity(V2i p, Sprite sprite, EntityPropertySet initial_properties = {})
         SetProperty(result, EntityProperty_Alive);
 
         result->handle = { (uint32_t)(result - entity_manager->entities), gen };
+        result->name = name;
         result->p = p;
         result->health = 2;
         result->sprites[result->sprite_count++] = sprite;
@@ -97,7 +98,7 @@ AddEntity(V2i p, Sprite sprite, EntityPropertySet initial_properties = {})
 static inline Entity *
 AddWall(V2i p)
 {
-    Entity *e = AddEntity(p, MakeSprite(Glyph_Tone50));
+    Entity *e = AddEntity(StringLiteral("Wall"), p, MakeSprite(Glyph_Tone50));
     SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Blocking);
     return e;
 }
@@ -105,7 +106,7 @@ AddWall(V2i p)
 static inline Entity *
 AddPlayer(V2i p)
 {
-    Entity *e = AddEntity(p, MakeSprite(Glyph_Dwarf2, MakeColor(255, 255, 0)));
+    Entity *e = AddEntity(StringLiteral("Player"), p, MakeSprite(Glyph_Dwarf2, MakeColor(255, 255, 0)));
     SetProperties(e, EntityProperty_PlayerControlled|EntityProperty_Blocking);
 
     Assert(!entity_manager->player);
@@ -480,6 +481,16 @@ FindPath(Arena *arena, V2i start, V2i target)
     return result;
 }
 
+static inline void
+AddToInventory(Entity *e, Entity *item)
+{
+    RemoveEntityFromGrid(item);
+    UnsetProperty(item, EntityProperty_Alive);
+
+    item->next_in_inventory = e->first_in_inventory;
+    e->first_in_inventory = item;
+}
+
 static inline bool
 PlayerAct(void)
 {
@@ -519,6 +530,10 @@ PlayerAct(void)
                     DamageEntity(e, 1);
                     return true;
                 }
+            }
+            else if (HasProperty(e, EntityProperty_Item))
+            {
+                AddToInventory(player, e);
             }
         }
 

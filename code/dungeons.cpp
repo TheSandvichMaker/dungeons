@@ -86,7 +86,7 @@ AppUpdateAndRender(Platform *platform_)
 #if 1
         AddRoom(MakeRect2iMinDim(1, 1, 16, 16));
 
-        Entity *martins = AddEntity(MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1));
+        Entity *martins = AddEntity(StringLiteral("Martins"), MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1));
         SetProperty(martins, EntityProperty_Martins|EntityProperty_Invulnerable|EntityProperty_Blocking);
 
         AddPlayer(MakeV2i(5, 6));
@@ -100,10 +100,11 @@ AppUpdateAndRender(Platform *platform_)
                                       RandomRange(&entropy, 2, 16));
                 if (!TileBlocked(spawn_p))
                 {
-                    Entity *c = AddEntity(spawn_p, MakeSprite('c'));
-                    SetProperty(c, EntityProperty_C|EntityProperty_Blocking);
+                    Entity *c = AddEntity(StringLiteral("Nugget of C"), spawn_p, MakeSprite('c'));
+                    SetProperty(c, EntityProperty_C|EntityProperty_Item);
                     if (0 == RandomChance(&entropy, 4))
                     {
+                        c->name = StringLiteral("Nugget of C++");
                         c->sprite_anim_rate = 0.25f;
                         c->sprite_anim_pause_time = 1.0f;
                         c->sprites[c->sprite_count++] = MakeSprite('c');
@@ -156,12 +157,21 @@ AppUpdateAndRender(Platform *platform_)
 
     UpdateAndRenderEntities();
 
-    DrawRect(Draw_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 12, 12), COLOR_WHITE, COLOR_BLACK);
+    DrawRect(Draw_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13), COLOR_WHITE, COLOR_BLACK);
     if (entity_manager->player)
     {
-        DrawText(Draw_Ui, MakeV2i(4, render_state->ui_top_right.y - 12),
-                 FormatTempString("Player x: %d, y: %d", entity_manager->player->p.x, entity_manager->player->p.y),
-                 COLOR_WHITE, COLOR_BLACK);
+        Entity *player = entity_manager->player;
+
+        V2i at_p = MakeV2i(4, render_state->ui_top_right.y - 3);
+        for (Entity *item = player->first_in_inventory;
+             item;
+             item = item->next_in_inventory)
+        {
+            DrawText(Draw_Ui, at_p,
+                     FormatTempString("Item: %.*s", StringExpand(item->name)),
+                     COLOR_WHITE, COLOR_BLACK);
+            at_p.y -= 1;
+        }
     }
 
     EndRender();
