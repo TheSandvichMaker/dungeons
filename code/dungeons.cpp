@@ -87,7 +87,7 @@ AppUpdateAndRender(Platform *platform_)
         AddRoom(MakeRect2iMinDim(1, 1, 16, 16));
 
         Entity *martins = AddEntity(MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1));
-        SetProperty(martins, EntityProperty_Martins|EntityProperty_Invulnerable);
+        SetProperty(martins, EntityProperty_Martins|EntityProperty_Invulnerable|EntityProperty_Blocking);
 
         AddPlayer(MakeV2i(5, 6));
 
@@ -98,10 +98,10 @@ AppUpdateAndRender(Platform *platform_)
             {
                 V2i spawn_p = MakeV2i(RandomRange(&entropy, 2, 16),
                                       RandomRange(&entropy, 2, 16));
-                if (!GetEntityAt(spawn_p))
+                if (!TileBlocked(spawn_p))
                 {
                     Entity *c = AddEntity(spawn_p, MakeSprite('c'));
-                    SetProperty(c, EntityProperty_C);
+                    SetProperty(c, EntityProperty_C|EntityProperty_Blocking);
                     if (0 == RandomChance(&entropy, 4))
                     {
                         c->sprite_anim_rate = 0.25f;
@@ -126,7 +126,7 @@ AppUpdateAndRender(Platform *platform_)
     static bool erase = false;
     if (Pressed(input->alt_interact))
     {
-        if (GetEntityAt(input->world_mouse_p))
+        if (TileBlocked(input->world_mouse_p))
         {
             erase = true;
         }
@@ -138,18 +138,24 @@ AppUpdateAndRender(Platform *platform_)
 
     if (input->alt_interact.ended_down)
     {
-        Entity *e = GetEntityAt(input->world_mouse_p);
-        if (erase && e)
+        EntityIter it = GetEntitiesAt(input->world_mouse_p);
+        if (erase && IsValid(it))
         {
-            KillEntity(e);
+            for (; IsValid(it); Next(&it))
+            {
+                KillEntity(it.entity);
+            }
         }
-        else if (!e)
+        else
         {
             AddWall(input->world_mouse_p);
         }
     }
 
-    BeginRender(Draw_World);
+    BeginRender();
     UpdateAndRenderEntities();
+
+    DrawRect(Draw_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 12, 12), COLOR_WHITE, COLOR_BLACK);
+
     EndRender();
 }

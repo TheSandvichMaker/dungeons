@@ -2,8 +2,7 @@
 #define DUNGEONS_ENTITY_HPP
 
 #define MAX_ENTITY_COUNT (1 << 16)
-#define WORLD_EXTENT_X 1024
-#define WORLD_EXTENT_Y 1024
+#define ENTITY_HASH_SIZE 8192
 
 struct Path
 {
@@ -16,6 +15,7 @@ enum EntityPropertyKind
     EntityProperty_None,
     EntityProperty_Alive,
     EntityProperty_Dying,
+    EntityProperty_Blocking,
     EntityProperty_PlayerControlled,
     EntityProperty_Invulnerable,
     EntityProperty_Martins,
@@ -42,6 +42,12 @@ operator == (EntityHandle a, EntityHandle b)
     return (a.index == b.index && a.generation == b.generation);
 }
 
+static inline bool
+operator != (EntityHandle a, EntityHandle b)
+{
+    return !(a == b);
+}
+
 static inline EntityHandle
 NullEntityHandle(void)
 {
@@ -52,6 +58,8 @@ NullEntityHandle(void)
 struct Entity
 {
     EntityHandle handle;
+
+    Entity *next_on_tile;
 
     V2i p;
     int32_t health;
@@ -86,6 +94,8 @@ struct Action
 
 struct EntityManager
 {
+    Arena *arena;
+
     Arena turn_arena;
     float turn_timer;
 
@@ -94,7 +104,7 @@ struct EntityManager
     Entity *player;
 
     Entity entities[MAX_ENTITY_COUNT];
-    EntityHandle entity_grid[WORLD_EXTENT_X][WORLD_EXTENT_X];
+    Entity *entity_hash[ENTITY_HASH_SIZE];
 };
 GLOBAL_STATE(EntityManager, entity_manager);
 
@@ -142,16 +152,32 @@ HasProperty(Entity *e, EntityPropertyKind property)
 static inline bool
 HasProperties(Entity *e, EntityPropertySet set)
 {
-    bool result = true;
-    for (size_t i = 0; i < EntityProperty_PAGECOUNT; ++i)
+    bool result = false;
+    if (e)
     {
-        if ((e->properties[i] & set.properties[i]) != set.properties[i])
+        result = true;
+        for (size_t i = 0; i < EntityProperty_PAGECOUNT; ++i)
         {
-            result = false;
-            break;
+            if ((e->properties[i] & set.properties[i]) != set.properties[i])
+            {
+                result = false;
+                break;
+            }
         }
     }
     return result;
+}
+
+static inline void
+SetProperties(Entity *e, EntityPropertySet set)
+{
+    if (e)
+    {
+        for (size_t i = 0; i < EntityProperty_PAGECOUNT; ++i)
+        {
+            e->properties[i] |= set.properties[i];
+        }
+    }
 }
 
 static inline EntityPropertySet
@@ -240,6 +266,28 @@ operator | (EntityPropertySet a, EntityPropertySet b)
 {
     EntityPropertySet result = CombineSet(a, b);
     return result;
+}
+
+static inline EntityPropertySet &
+operator |= (EntityPropertySet &set, EntityPropertyKind prop)
+{
+    set = set|prop;
+    return set;
+}
+
+static inline EntityPropertySet &
+operator |= (EntityPropertySet &a, EntityPropertySet b)
+{
+    a = a|b;
+    return a;
+}
+
+static inline EntityPropertySet
+MakeSet(EntityPropertyKind prop)
+{
+    EntityPropertySet set = {};
+    set |= prop;
+    return set;
 }
 
 #endif /* DUNGEONS_ENTITY_HPP */

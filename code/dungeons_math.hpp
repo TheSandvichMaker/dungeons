@@ -322,13 +322,6 @@ Smootherstep(float x)
     return result;
 }
 
-DUNGEONS_INLINE uint32_t
-HashCoordinate(int32_t x, int32_t y, int32_t z)
-{
-    uint32_t result = ((x*73856093)^(y*83492791)^(z*871603259));
-    return result;
-}
-
 DUNGEONS_INLINE float
 MapToRange(float t, float min, float max)
 {

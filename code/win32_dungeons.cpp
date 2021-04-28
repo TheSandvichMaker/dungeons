@@ -137,17 +137,17 @@ Win32_Utf8ToUtf16(Arena *arena, const char *utf8, int length = -1)
     return result;
 }
 
-static inline char *
+static inline uint8_t *
 Win32_Utf16ToUtf8(Arena *arena, const wchar_t *utf16, int *out_length = nullptr)
 {
-    char *result = nullptr;
+    uint8_t *result = nullptr;
 
     int char_count = WideCharToMultiByte(CP_UTF8, 0, utf16, -1, nullptr, 0, nullptr, nullptr);
-    result = PushArrayNoClear(arena, char_count, char);
+    result = PushArrayNoClear(arena, char_count, uint8_t);
 
     if (result)
     {
-        if (!WideCharToMultiByte(CP_UTF8, 0, utf16, -1, result, char_count, nullptr, nullptr))
+        if (!WideCharToMultiByte(CP_UTF8, 0, utf16, -1, (LPSTR)result, char_count, nullptr, nullptr))
         {
             Win32_DisplayLastError();
         }

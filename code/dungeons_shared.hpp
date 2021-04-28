@@ -162,4 +162,26 @@ HashString(String string)
     return result;
 }
 
+static inline uint64_t
+HashIntegers(uint32_t a, uint32_t b = 0, uint32_t c = 0, uint32_t d = 0)
+{
+    unsigned char seed[16] =
+    {
+        8,   45,  125, 36,
+        205, 22,  36,  155,
+        10,  127, 212, 213,
+        197, 48,  36,  148,
+    };
+    __m128i hash = _mm_set_epi32(d, c, b, a);
+    hash = _mm_aesdec_si128(hash, _mm_loadu_si128((__m128i *)seed));
+    hash = _mm_aesdec_si128(hash, _mm_loadu_si128((__m128i *)seed));
+    return *(uint64_t *)&hash;
+}
+
+static inline uint64_t
+HashCoordinate(V2i p)
+{
+    return HashIntegers(p.x, p.y);
+}
+
 #endif /* DUNGEONS_SHARED_HPP */

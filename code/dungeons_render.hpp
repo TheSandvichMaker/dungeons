@@ -94,9 +94,9 @@ enum
 
 struct Sprite
 {
+    Glyph glyph;
     Color foreground;
     Color background;
-    Glyph glyph;
 };
 
 static inline Sprite
@@ -126,7 +126,9 @@ enum DrawMode
 {
     Draw_None,
     Draw_World,
+    Draw_FIRST = Draw_World,
     Draw_Ui,
+    Draw_COUNT,
 };
 
 struct SpriteToDraw
@@ -144,7 +146,7 @@ struct SpriteChunk
 
 struct DirtyRects
 {
-    int glyphs_per_col, glyphs_per_row;
+    int glyphs_per_row, glyphs_per_col;
     int rect_count_x, rect_count_y, rect_count;
     int rect_w, rect_h;
     uint64_t *rect_hashes;
@@ -172,8 +174,7 @@ struct RenderState
 
     Glyph wall_segment_lookup[Wall_MAXVALUE + 1];
 
-    DrawMode sprite_mode;
-    SpriteLayer world_layer;
+    SpriteLayer layers[Draw_COUNT];
 };
 
 GLOBAL_STATE(RenderState, render_state);

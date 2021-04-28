@@ -12,55 +12,52 @@ GetEntity(EntityHandle handle)
 static inline bool
 RemoveEntityFromGrid(Entity *e)
 {
-    bool result = true;
-
-    if ((e->p.x >= 0) &&
-        (e->p.y >= 0) &&
-        (e->p.x < WORLD_EXTENT_X) &&
-        (e->p.y < WORLD_EXTENT_Y))
+    uint64_t slot = HashCoordinate(e->p) % ENTITY_HASH_SIZE;
+    for (Entity **it_at = &entity_manager->entity_hash[slot];
+         *it_at;
+         it_at = &(*it_at)->next_on_tile)
     {
-        EntityHandle grid_slot = entity_manager->entity_grid[e->p.x][e->p.y];
-        if (grid_slot == e->handle)
+        Entity *it = *it_at;
+        if (it->handle == e->handle)
         {
-            entity_manager->entity_grid[e->p.x][e->p.y] = {};
-        }
-        else
-        {
-            result = false;
+            Assert(it == e);
+
+            *it_at = it->next_on_tile;
+            it->next_on_tile = nullptr;
+
+            return true;
         }
     }
 
-    return result;
+    return false;
 }
 
 static inline bool
 MoveEntity(Entity *e, V2i p)
 {
-    bool result = true;
-
-    RemoveEntityFromGrid(e);
-
-    if ((p.x >= 0) &&
-        (p.y >= 0) &&
-        (p.x < WORLD_EXTENT_X) &&
-        (p.y < WORLD_EXTENT_Y))
+    uint64_t slot = HashCoordinate(p) % ENTITY_HASH_SIZE;
+    for (Entity *it = entity_manager->entity_hash[slot];
+         it;
+         it = it->next_on_tile)
     {
-        if (entity_manager->entity_grid[p.x][p.y] == NullEntityHandle())
+        if (HasProperty(it, EntityProperty_Blocking))
         {
-            entity_manager->entity_grid[p.x][p.y] = e->handle;
-            e->p = p;
-        }
-        else
-        {
-            result = false;
+            return false;
         }
     }
 
-    return result;
+    RemoveEntityFromGrid(e);
+
+    e->next_on_tile = entity_manager->entity_hash[slot];
+    entity_manager->entity_hash[slot] = e;
+
+    e->p = p;
+
+    return true;
 }
 
 static inline Entity *
-AddEntity(V2i p, Sprite sprite)
+AddEntity(V2i p, Sprite sprite, EntityPropertySet initial_properties = {})
 {
     Entity *result = nullptr;
     for (size_t i = 0; i < entity_manager->entity_count; ++i)
@@ -82,7 +79,10 @@ AddEntity(V2i p, Sprite sprite)
         uint32_t gen = result->handle.generation + 1;
 
         ZeroStruct(result);
+
+        SetProperties(result, initial_properties);
         SetProperty(result, EntityProperty_Alive);
+
         result->handle = { (uint32_t)(result - entity_manager->entities), gen };
         result->p = p;
         result->health = 2;
@@ -98,7 +98,7 @@ static inline Entity *
 AddWall(V2i p)
 {
     Entity *e = AddEntity(p, MakeSprite(Glyph_Tone50));
-    SetProperty(e, EntityProperty_Invulnerable);
+    SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Blocking);
     return e;
 }
 
@@ -106,7 +106,7 @@ static inline Entity *
 AddPlayer(V2i p)
 {
     Entity *e = AddEntity(p, MakeSprite(Glyph_Dwarf2, MakeColor(255, 255, 0)));
-    SetProperty(e, EntityProperty_PlayerControlled);
+    SetProperties(e, EntityProperty_PlayerControlled|EntityProperty_Blocking);
 
     Assert(!entity_manager->player);
     entity_manager->player = e;
@@ -129,17 +129,27 @@ KillEntity(Entity *e)
 struct EntityIter
 {
     EntityPropertySet filter;
+
+    Entity *list;
+    size_t next_offset;
+
     Entity *entity;
 };
 
+static inline void Next(EntityIter *iter);
+
 static inline EntityIter
-IterateEntities(EntityPropertyKind prop)
+Reset(EntityIter iter)
 {
-    EntityIter result = {};
-    result.filter = SetProperty(result.filter, EntityProperty_Alive);
-    result.filter = SetProperty(result.filter, prop);
-    result.entity = nullptr;
-    return result;
+    if (iter.list)
+    {
+        iter.entity = iter.list;
+    }
+    else
+    {
+        iter.entity = entity_manager->entities;
+    }
+    return iter;
 }
 
 static inline EntityIter
@@ -150,39 +160,106 @@ IterateEntities(EntityPropertySet filter = {})
     EntityIter result = {};
     result.filter = SetProperty(result.filter, EntityProperty_Alive);
     result.filter = CombineSet(result.filter, filter);
-    result.entity = nullptr;
+    result.entity = entity_manager->entities;
+
+    if (!HasProperties(result.entity, result.filter))
+    {
+        Next(&result);
+    }
+
     return result;
+}
+
+static inline EntityIter
+IterateEntities(EntityPropertyKind prop)
+{
+    return IterateEntities(MakeSet(prop));
+}
+
+#define IterateEntityList(list, next_pointer, ...) \
+    IterateEntityList_(list, offsetof(Entity, next_pointer), ##__VA_ARGS__)
+static inline EntityIter
+IterateEntityList_(Entity *list, size_t next_offset, EntityPropertySet filter = {})
+{
+    EntityPropertySet must_filter = {};
+
+    EntityIter result = {};
+    result.filter = SetProperty(result.filter, EntityProperty_Alive);
+    result.filter = CombineSet(result.filter, filter);
+
+    result.list = list;
+    result.next_offset = next_offset;
+
+    result.entity = list;
+
+    // NOTE: Let's warm up the iterator so if there are no entities with the
+    // required properties, the iterator will start invalid.
+    if (!HasProperties(result.entity, result.filter))
+    {
+        Next(&result);
+    }
+
+    return result;
+}
+
+static inline EntityIter
+IterateEntityList_(Entity *list, size_t next_offset, EntityPropertyKind prop)
+{
+    return IterateEntityList_(list, next_offset, MakeSet(prop));
 }
 
 static inline bool
-Next(EntityIter *iter)
+IsValid(const EntityIter &iter)
 {
-    if (!iter->entity)
-    {
-        iter->entity = entity_manager->entities - 1;
-    }
-
-    Entity *end = entity_manager->entities + entity_manager->entity_count;
-    while (iter->entity < end)
-    {
-        iter->entity += 1;
-        if (HasProperties(iter->entity, iter->filter))
-        {
-            return true;
-        }
-    }
-    return false;
+    return !!iter.entity;
 }
 
-static inline Entity *
-GetEntityAt(V2i p)
+static inline void
+Next(EntityIter *iter)
 {
-    Entity *result = nullptr;
-    if (p.x > 0 && p.y > 0 && p.x < WORLD_EXTENT_X && p.y < WORLD_EXTENT_Y)
+    Entity *end = entity_manager->entities + entity_manager->entity_count;
+
+    while (iter->entity)
     {
-        result = GetEntity(entity_manager->entity_grid[p.x][p.y]);
+        if (iter->list)
+        {
+            iter->entity = *(Entity **)((char *)iter->entity + iter->next_offset);
+        }
+        else
+        {
+            iter->entity += 1;
+            if (iter->entity >= end)
+            {
+                iter->entity = nullptr;
+            }
+        }
+
+        if (HasProperties(iter->entity, iter->filter))
+        {
+            break;
+        }
     }
+}
+
+static inline EntityIter
+GetEntitiesAt(V2i p, EntityPropertySet filter = {})
+{
+    Entity *list = entity_manager->entity_hash[HashCoordinate(p) % ENTITY_HASH_SIZE];
+    EntityIter result = IterateEntityList(list, next_on_tile, filter);
     return result;
+}
+
+static inline EntityIter
+GetEntitiesAt(V2i p, EntityPropertyKind prop)
+{
+    return GetEntitiesAt(p, MakeSet(prop));
+}
+
+static inline bool
+TileBlocked(V2i p)
+{
+    EntityIter iter = GetEntitiesAt(p, MakeSet(EntityProperty_Blocking));
+    return IsValid(iter);
 }
 
 static inline Entity *
@@ -190,7 +267,7 @@ FindClosestEntity(V2i p, EntityPropertyKind required_property, Entity *filter = 
 {
     uint32_t best_dist = UINT32_MAX;
     Entity *result = nullptr;
-    for (EntityIter iter = IterateEntities(); Next(&iter);)
+    for (EntityIter iter = IterateEntities(); IsValid(iter); Next(&iter))
     {
         Entity *e = iter.entity;
 
@@ -233,10 +310,10 @@ DamageEntity(Entity *e, int amount)
     return false;
 }
 
-static inline Entity *
+static inline EntityIter
 TraceLine(V2i start, V2i end, Sprite sprite = MakeSprite(0))
 {
-    Entity *result = nullptr;
+    EntityIter result = {};
 
     int x0 = start.x;
     int y0 = start.y;
@@ -259,16 +336,16 @@ TraceLine(V2i start, V2i end, Sprite sprite = MakeSprite(0))
 
         if (!AreEqual(p, start))
         {
-            Entity *entity_at = GetEntityAt(p);
-            if (entity_at)
+            EntityIter on_tile = GetEntitiesAt(p, EntityProperty_Blocking);
+            if (IsValid(on_tile))
             {
-                result = entity_at;
+                result = on_tile;
                 break;
             }
 
             if (sprite.glyph)
             {
-                DrawTile(p, sprite);
+                DrawTile(Draw_World, p, sprite);
             }
         }
 
@@ -304,7 +381,7 @@ struct PathNode
 
 struct PathfindingState
 {
-    bool node_grid[WORLD_EXTENT_X][WORLD_EXTENT_Y];
+    bool node_hash[512];
 };
 
 static inline Path
@@ -348,28 +425,23 @@ FindPath(Arena *arena, V2i start, V2i target)
         for (size_t i = 0; i < ArrayCount(possible_moves); ++i)
         {
             V2i p = top_node->p + possible_moves[i];
-            if ((p.x < 0) ||
-                (p.y < 0) ||
-                (p.x > WORLD_EXTENT_X) ||
-                (p.y > WORLD_EXTENT_Y))
+
+            uint64_t slot = HashCoordinate(p) % ArrayCount(state->node_hash);
+            if (state->node_hash[slot])
             {
                 continue;
             }
+            state->node_hash[slot] = true;
 
-            if (state->node_grid[p.x][p.y])
-            {
-                continue;
-            }
-            state->node_grid[p.x][p.y] = true;
-
-            if (!GetEntityAt(p) || AreEqual(p, target))
+            EntityIter blocking_entities = GetEntitiesAt(p, EntityProperty_Blocking);
+            if (!IsValid(blocking_entities) || AreEqual(p, target))
             {
                 PathNode *node = PushStruct(temp_arena, PathNode);
                 node->prev = top_node;
                 node->p = p;
                 node->cost = top_node->cost + Length(possible_moves[i]); /* + DiagonalDistance(p, target); */
 
-                // DrawTile(p, MakeSprite(Glyph_Tone25, MakeColor(0, 255, 255), MakeColor(0, 127, 127)));
+                // DrawTile(Draw_World, p, MakeSprite(Glyph_Tone25, MakeColor(0, 255, 255), MakeColor(0, 127, 127)));
 
                 PathNode **insert_at = &queue;
                 for (; *insert_at; insert_at = &(*insert_at)->next)
@@ -431,20 +503,27 @@ PlayerAct(void)
     if (!AreEqual(move, MakeV2i(0, 0)))
     {
         V2i move_p = player->p + move;
-        Entity *e_at_move_p = GetEntityAt(move_p);
-        if (e_at_move_p)
+        
+        bool blocked = false;
+        for (EntityIter at_move_p = GetEntitiesAt(move_p); IsValid(at_move_p); Next(&at_move_p))
         {
-            if (HasProperty(e_at_move_p, EntityProperty_Invulnerable))
+            Entity *e = at_move_p.entity;
+            if (HasProperty(e, EntityProperty_Blocking))
             {
-                // blocked
-            }
-            else
-            {
-                DamageEntity(e_at_move_p, 1);
-                return true;
+                if (HasProperty(e, EntityProperty_Invulnerable))
+                {
+                    // blocked with no recourse
+                    blocked = true;
+                }
+                else
+                {
+                    DamageEntity(e, 1);
+                    return true;
+                }
             }
         }
-        else
+
+        if (!blocked)
         {
             MoveEntity(player, move_p);
             return true;
@@ -461,10 +540,10 @@ UpdateAndRenderEntities(void)
     {
         if (PlayerAct())
         {
-            entity_manager->turn_timer += 0.10f;
-            for (EntityIter e_iter = IterateEntities(EntityProperty_Martins); Next(&e_iter);)
+            // entity_manager->turn_timer += 0.10f;
+            for (EntityIter it = IterateEntities(EntityProperty_Martins); IsValid(it); Next(&it))
             {
-                Entity *e = e_iter.entity;
+                Entity *e = it.entity;
 
                 Clear(&entity_manager->turn_arena);
 
@@ -473,9 +552,9 @@ UpdateAndRenderEntities(void)
 
                 Entity *best_c = nullptr;
 
-                for (EntityIter c_iter = IterateEntities(EntityProperty_C); Next(&c_iter);)
+                for (EntityIter c_it = IterateEntities(EntityProperty_C); IsValid(c_it); Next(&c_it))
                 {
-                    Entity *c = c_iter.entity;
+                    Entity *c = c_it.entity;
 
                     Path path = FindPath(&entity_manager->turn_arena, e->p, c->p);
                     if (path.length > 0 && path.length < best_path.length)
@@ -505,9 +584,9 @@ UpdateAndRenderEntities(void)
         entity_manager->turn_timer -= platform->dt;
     }
 
-    for (EntityIter iter = IterateEntities(); Next(&iter);)
+    for (EntityIter it = IterateEntities(); IsValid(it); Next(&it))
     {
-        Entity *e = iter.entity;
+        Entity *e = it.entity;
 
         Sprite sprite = e->sprites[e->sprite_index];
         if (e->sprite_anim_timer >= e->sprite_anim_rate)
@@ -533,7 +612,7 @@ UpdateAndRenderEntities(void)
             KillEntity(e);
         }
 
-        DrawTile(e->p, sprite);
+        DrawTile(Draw_World, e->p, sprite);
     }
 }
 

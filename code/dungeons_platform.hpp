@@ -331,7 +331,7 @@ struct PlatformEvent
     PlatformInputCode input_code;
 
     int text_length;
-    char *text;
+    uint8_t *text;
 
     bool consumed_;
 };

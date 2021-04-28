@@ -216,7 +216,7 @@ GetGlyphRect(Font *font, Glyph glyph)
 {
     AssertSlow(glyph < font->glyph_count);
     uint32_t glyph_x = font->glyph_w*(glyph % font->glyphs_per_row);
-    uint32_t glyph_y = font->glyph_h*(font->glyphs_per_col - (glyph / font->glyphs_per_row) - 1);
+    uint32_t glyph_y = font->glyph_h*(font->glyphs_per_col - (glyph / font->glyphs_per_col) - 1);
     Rect2i result = MakeRect2iMinDim(glyph_x, glyph_y, font->glyph_w, font->glyph_h);
     return result;
 }
@@ -231,40 +231,9 @@ BlitCharMask(Bitmap *dest, Font *font, V2i p, Glyph glyph, Color foreground, Col
     }
 }
 
-static inline V2i
-TileToScreen(DrawMode mode, V2i p)
-{
-    if (mode == Draw_World)
-    {
-        p -= render_state->camera_bottom_left;
-        p *= MakeV2i(render_state->world_font->glyph_w, render_state->world_font->glyph_h);
-    }
-    else
-    {
-        Assert(mode == Draw_Ui);
-        p *= MakeV2i(render_state->ui_font->glyph_w, render_state->ui_font->glyph_h);
-    }
-    return p;
-}
-
-static inline Font *
-CurrentFont(void)
-{
-    if (render_state->sprite_mode == Draw_World)
-    {
-        return render_state->world_font;
-    }
-    else
-    {
-        Assert(render_state->sprite_mode == Draw_Ui);
-        return render_state->ui_font;
-    }
-}
-
 static inline SpriteChunk *
 GetAvailableSpriteChunk(SpriteLayer *layer)
 {
-    Assert(render_state->sprite_mode != Draw_None);
     if (!layer->first_sprite_chunk ||
         (layer->first_sprite_chunk->sprite_count >= ArrayCount(layer->first_sprite_chunk->sprites)))
     {
@@ -276,11 +245,21 @@ GetAvailableSpriteChunk(SpriteLayer *layer)
     return layer->first_sprite_chunk;
 }
 
-static inline void
-DrawTile(V2i tile_p, Sprite sprite)
+static inline SpriteLayer *
+GetSpriteLayer(DrawMode mode)
 {
-    SpriteLayer *layer = &render_state->world_layer;
-    tile_p -= render_state->camera_bottom_left;
+    Assert(mode != Draw_None);
+    return &render_state->layers[mode];
+}
+
+static inline void
+DrawTile(DrawMode mode, V2i tile_p, Sprite sprite)
+{
+    SpriteLayer *layer = GetSpriteLayer(mode);
+    if (mode == Draw_World)
+    {
+        tile_p -= render_state->camera_bottom_left;
+    }
 
     SpriteChunk *chunk = GetAvailableSpriteChunk(layer);
 
@@ -289,14 +268,19 @@ DrawTile(V2i tile_p, Sprite sprite)
     to_draw->sprite = sprite;
 
     DirtyRects *rects = &layer->rects;
-    V2i rect_p = tile_p / MakeV2i(rects->glyphs_per_col, rects->glyphs_per_row);
+    V2i rect_p = tile_p / MakeV2i(rects->glyphs_per_row, rects->glyphs_per_col);
+
+    Assert((rect_p.x >= 0) &&
+           (rect_p.y >= 0) &&
+           (rect_p.x < rects->rect_count_x) &&
+           (rect_p.y < rects->rect_count_y));
 
     uint64_t *hash = &rects->rect_hashes[rect_p.y*rects->rect_count_x + rect_p.x];
     *hash = HashData(*hash, sizeof(*to_draw), to_draw);
 }
 
 static inline void
-DrawRect(const Rect2i &rect, Color foreground, Color background)
+DrawRect(DrawMode mode, const Rect2i &rect, Color foreground, Color background)
 {
     uint32_t left   = Wall_Left;
     uint32_t right  = Wall_Right;
@@ -315,54 +299,57 @@ DrawRect(const Rect2i &rect, Color foreground, Color background)
     }
 #endif
 
-    DrawTile(rect.min, MakeWall(right|top, foreground, background));
-    DrawTile(MakeV2i(rect.max.x - 1, rect.min.y), MakeWall(left|top, foreground, background));
-    DrawTile(rect.max - MakeV2i(1, 1), MakeWall(left|bottom, foreground, background));
-    DrawTile(MakeV2i(rect.min.x, rect.max.y - 1), MakeWall(right|bottom, foreground, background));
+    DrawTile(mode, rect.min, MakeWall(right|top, foreground, background));
+    DrawTile(mode, MakeV2i(rect.max.x - 1, rect.min.y), MakeWall(left|top, foreground, background));
+    DrawTile(mode, rect.max - MakeV2i(1, 1), MakeWall(left|bottom, foreground, background));
+    DrawTile(mode, MakeV2i(rect.min.x, rect.max.y - 1), MakeWall(right|bottom, foreground, background));
 
     for (int32_t x = rect.min.x + 1; x < rect.max.x - 1; ++x)
     {
-        DrawTile(MakeV2i(x, rect.min.y), MakeWall(left|right, foreground, background));
-        DrawTile(MakeV2i(x, rect.max.y - 1), MakeWall(left|right, foreground, background));
+        DrawTile(mode, MakeV2i(x, rect.min.y), MakeWall(left|right, foreground, background));
+        DrawTile(mode, MakeV2i(x, rect.max.y - 1), MakeWall(left|right, foreground, background));
     }
 
     for (int32_t y = rect.min.y + 1; y < rect.max.y - 1; ++y)
     {
-        DrawTile(MakeV2i(rect.min.x, y), MakeWall(top|bottom, foreground, background));
-        DrawTile(MakeV2i(rect.max.x - 1, y), MakeWall(top|bottom, foreground, background));
+        DrawTile(mode, MakeV2i(rect.min.x, y), MakeWall(top|bottom, foreground, background));
+        DrawTile(mode, MakeV2i(rect.max.x - 1, y), MakeWall(top|bottom, foreground, background));
     }
 }
 
 static void
-BeginRender(DrawMode mode)
+BeginRender(void)
 {
-    render_state->sprite_mode = mode;
-
     Arena *arena = GetTempArena();
     render_state->arena = arena;
 
     Bitmap *target = render_state->target;
 
-    SpriteLayer *layer = &render_state->world_layer;
-    layer->first_sprite_chunk = nullptr;
-    layer->font = render_state->world_font;
+    render_state->layers[Draw_World].font = render_state->world_font;
+    render_state->layers[Draw_Ui].font = render_state->ui_font;
 
-    Font *font = layer->font;
+    for (size_t i = 1; i < Draw_COUNT; ++i)
+    {
+        SpriteLayer *layer = GetSpriteLayer((DrawMode)i);
+        layer->first_sprite_chunk = nullptr;
 
-    int total_glyphs_per_col = target->w / font->glyph_w;
-    int total_glyphs_per_row = target->h / font->glyph_h;
+        Font *font = layer->font;
 
-    DirtyRects *rects = &layer->rects;
-    rects->rect_count_x = RECT_HASH_COUNT_X;
-    rects->rect_count_y = RECT_HASH_COUNT_Y;
-    rects->rect_count = rects->rect_count_x*rects->rect_count_y;
+        int total_glyphs_per_row = target->w / font->glyph_w;
+        int total_glyphs_per_col = target->h / font->glyph_h;
 
-    rects->glyphs_per_col = total_glyphs_per_col / rects->rect_count_x;
-    rects->glyphs_per_row = total_glyphs_per_row / rects->rect_count_y;
+        DirtyRects *rects = &layer->rects;
+        rects->rect_count_x = RECT_HASH_COUNT_X;
+        rects->rect_count_y = RECT_HASH_COUNT_Y;
+        rects->rect_count = rects->rect_count_x*rects->rect_count_y;
 
-    rects->rect_w = rects->glyphs_per_col*font->glyph_w;
-    rects->rect_h = rects->glyphs_per_row*font->glyph_h;
-    rects->rect_hashes = PushArray(arena, rects->rect_count, uint64_t);
+        rects->glyphs_per_row = (total_glyphs_per_row + rects->rect_count_x - 1) / rects->rect_count_x;
+        rects->glyphs_per_col = (total_glyphs_per_col + rects->rect_count_y - 1) / rects->rect_count_y;
+
+        rects->rect_w = rects->glyphs_per_row*font->glyph_w;
+        rects->rect_h = rects->glyphs_per_col*font->glyph_h;
+        rects->rect_hashes = PushArray(arena, rects->rect_count, uint64_t);
+    }
 }
 
 struct TiledRenderJobParams
@@ -407,10 +394,8 @@ PLATFORM_JOB(TiledRenderJob)
 }
 
 static void
-EndRender(void)
+RenderLayer(SpriteLayer *layer)
 {
-    SpriteLayer *layer = &render_state->world_layer;
-
     DirtyRects *rects = &layer->rects;
     DirtyRects *prev_rects = &layer->prev_rects;
 
@@ -456,5 +441,14 @@ EndRender(void)
     platform->WaitForJobs(platform->high_priority_queue);
 
     Swap(layer->rects, layer->prev_rects);
-    render_state->sprite_mode = Draw_None;
+}
+
+static void
+EndRender(void)
+{
+    for (size_t i = Draw_FIRST; i < Draw_COUNT; ++i)
+    {
+        SpriteLayer *layer = GetSpriteLayer((DrawMode)i);
+        RenderLayer(layer);
+    }
 }
