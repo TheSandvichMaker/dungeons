@@ -88,6 +88,7 @@ AddEntity(String name, V2i p, Sprite sprite, EntityPropertySet initial_propertie
         result->p = p;
         result->health = 2;
         result->sprites[result->sprite_count++] = sprite;
+        result->speed = 100;
 
         MoveEntity(result, p);
     }
@@ -500,6 +501,12 @@ PlayerAct(void)
         return true;
     }
 
+    player->energy += player->speed;
+    if (player->energy < 100)
+    {
+        return false;
+    }
+
     V2i move = MakeV2i(0, 0);
     if (Triggered(input->north))     move += MakeV2i( 0,  1);
     if (Triggered(input->northeast)) move += MakeV2i( 1,  1);
@@ -559,36 +566,56 @@ UpdateAndRenderEntities(void)
             {
                 Entity *e = it.entity;
 
-                Clear(&entity_manager->turn_arena);
-
-                Path best_path = {};
-                best_path.length = UINT32_MAX;
-
-                Entity *best_c = nullptr;
-
-                for (EntityIter c_it = IterateAllEntities(EntityProperty_C); IsValid(c_it); Next(&c_it))
+                e->energy += e->speed;
+                if (e->energy < 100)
                 {
-                    Entity *c = c_it.entity;
-
-                    Path path = FindPath(&entity_manager->turn_arena, e->p, c->p);
-                    if (path.length > 0 && path.length < best_path.length)
-                    {
-                        best_c = c;
-                        best_path = path;
-                    }
+                    continue;
                 }
 
-                if (best_c)
+                while (e->energy >= 100)
                 {
-                    V2i new_p = best_path.positions[0];
-                    if (AreEqual(new_p, best_c->p))
+                    Clear(&entity_manager->turn_arena);
+
+                    Path best_path = {};
+                    best_path.length = UINT32_MAX;
+
+                    Entity *best_c = nullptr;
+
+                    EntityIter target_it = IterateAllEntities(EntityProperty_C);
+                    if (!IsValid(target_it))
                     {
-                        DamageEntity(best_c, 999);
+                        target_it = IterateAllEntities(EntityProperty_PlayerControlled);
                     }
-                    else
+
+                    for (; IsValid(target_it); Next(&target_it))
                     {
-                        MoveEntity(e, new_p);
+                        Entity *c = target_it.entity;
+
+                        Path path = FindPath(&entity_manager->turn_arena, e->p, c->p);
+                        if (path.length > 0 && path.length < best_path.length)
+                        {
+                            best_c = c;
+                            best_path = path;
+                        }
                     }
+
+                    if (best_c)
+                    {
+                        V2i new_p = best_path.positions[0];
+                        if (AreEqual(new_p, best_c->p))
+                        {
+                            if (DamageEntity(best_c, 999))
+                            {
+                                platform->LogPrint(PlatformLogLevel_Info, "Martins eviscerated a %.*s", StringExpand(best_c->name));
+                            }
+                        }
+                        else
+                        {
+                            MoveEntity(e, new_p);
+                        }
+                    }
+
+                    e->energy -= 100;
                 }
             }
         }

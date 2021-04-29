@@ -73,6 +73,9 @@ struct Entity
     float flash_timer;
     Color flash_color;
 
+    int32_t speed;
+    int32_t energy;
+
     float sprite_anim_rate;
     float sprite_anim_timer;
     float sprite_anim_pause_time;

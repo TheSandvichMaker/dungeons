@@ -88,6 +88,7 @@ AppUpdateAndRender(Platform *platform_)
 
         Entity *martins = AddEntity(StringLiteral("Martins"), MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1));
         SetProperty(martins, EntityProperty_Martins|EntityProperty_Invulnerable|EntityProperty_Blocking);
+        martins->speed = 150;
 
         AddPlayer(MakeV2i(5, 6));
 
@@ -172,6 +173,15 @@ AppUpdateAndRender(Platform *platform_)
                      COLOR_WHITE, COLOR_BLACK);
             at_p.y -= 1;
         }
+    }
+
+    V2i at_p = MakeV2i(40, render_state->ui_top_right.y - 3);
+    for (PlatformLogLine *line = platform->GetFirstLogLine();
+         line;
+         line = platform->GetNextLogLine(line))
+    {
+        DrawText(Draw_Ui, at_p, FormatTempString("%s", line->text), COLOR_WHITE, COLOR_BLACK);
+        at_p.y -= 1;
     }
 
     EndRender();
