@@ -43,7 +43,6 @@ Release(Arena *arena)
 {
     Assert(arena->temp_count == 0);
     platform->DeallocateMemory(arena->base);
-    ZeroStruct(arena);
 }
 
 static inline void
@@ -51,6 +50,14 @@ ResetTo(Arena *arena, char *Target)
 {
     Assert((Target >= arena->base) && (Target <= (arena->base + arena->used)));
     arena->used = (Target - arena->base);
+}
+
+static inline void
+SetCapacity(Arena *arena, size_t capacity)
+{
+    Assert(!arena->capacity);
+    Assert(!arena->base);
+    arena->capacity = capacity;
 }
 
 static inline void
@@ -140,13 +147,14 @@ PushSize_(Arena *arena, size_t Size, size_t Align, bool Clear, const char *Tag)
     return Result;
 }
 
-#define BootstrapPushStruct(Type, Member)                                             \
+#define BootstrapPushStruct(Type, Member, ...)                                        \
     (Type *)BootstrapPushStruct_(sizeof(Type), alignof(Type), offsetof(Type, Member), \
-                                 LOCATION_STRING("Bootstrap " #Type "::" #Member))
+                                 LOCATION_STRING("Bootstrap " #Type "::" #Member), ##__VA_ARGS__)
 static inline void *
-BootstrapPushStruct_(size_t Size, size_t Align, size_t arenaOffset, const char *Tag)
+BootstrapPushStruct_(size_t Size, size_t Align, size_t arenaOffset, const char *Tag, size_t capacity = DEFAULT_ARENA_CAPACITY)
 {
     Arena arena = {};
+    SetCapacity(&arena, capacity);
     void *State = PushSize_(&arena, Size, Align, true, Tag);
     *(Arena *)((char *)State + arenaOffset) = arena;
     return State;

@@ -134,13 +134,6 @@ MatchFilter(PlatformEventType type, PlatformEventFilter filter)
     return result;
 }
 
-enum PlatformMouseButton
-{
-    PlatformMouseButton_None,
-
-    PlatformMouseButton_COUNT,
-};
-
 enum PlatformInputCode
 {
     //
@@ -301,16 +294,6 @@ enum PlatformInputCode
     PlatformInputCode_OemClear       = 0xFE,
 
     //
-    // Mouse buttons
-    //
-
-    PlatformInputCode_MouseLeft,
-    PlatformInputCode_MouseMiddle,
-    PlatformInputCode_MouseRight,
-    PlatformInputCode_MouseExtended0,
-    PlatformInputCode_MouseExtended1,
-
-    //
     //
     //
 
@@ -323,11 +306,11 @@ struct PlatformEvent
 
     PlatformEventType type;
 
-    bool pressed;
     bool alt_down;
     bool ctrl_down;
     bool shift_down;
 
+    bool pressed;
     PlatformInputCode input_code;
 
     int text_length;
@@ -378,7 +361,9 @@ enum PlatformLogLevel
 struct PlatformLogLine
 {
     PlatformLogLevel level;
-    char text[PLATFORM_LOG_LINE_SIZE];
+
+    String string;
+    uint8_t data_[PLATFORM_LOG_LINE_SIZE];
 };
 
 struct Platform
@@ -429,6 +414,8 @@ struct Platform
 
     PlatformHighResTime (*GetTime)(void);
     double (*SecondsElapsed)(PlatformHighResTime start, PlatformHighResTime end);
+
+    void (*SleepThread)(int milliseconds);
 };
 
 static Platform *platform;

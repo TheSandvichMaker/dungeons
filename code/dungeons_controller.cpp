@@ -54,8 +54,8 @@ InitializeInputBindings(void)
     input->binding_map[PlatformInputCode_Return]     = &input->interact;
     input->binding_map[PlatformInputCode_Back]       = &input->alt_interact;
 
-    input->binding_map[PlatformInputCode_MouseLeft]  = &input->interact;
-    input->binding_map[PlatformInputCode_MouseRight] = &input->alt_interact;
+    input->binding_map[PlatformInputCode_LButton] = &input->interact;
+    input->binding_map[PlatformInputCode_RButton] = &input->alt_interact;
 }
 
 static inline void

@@ -233,6 +233,12 @@ AreEqual(V2i a, V2i b)
             a.y == b.y);
 }
 
+DUNGEONS_INLINE V2i
+Perpendicular(V2i a)
+{
+    return MakeV2i(-a.y, a.x);
+}
+
 DUNGEONS_INLINE float Square(float x) { return x*x; }
 DUNGEONS_INLINE float SquareRoot(float x) { return sqrtf(x); }
 

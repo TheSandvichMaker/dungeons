@@ -64,7 +64,7 @@ AppUpdateAndRender(Platform *platform_)
 {
     platform = platform_;
 
-    GameState *game_state = (GameState *)platform->persistent_app_data;
+    game_state = (GameState *)platform->persistent_app_data;
     if (!platform->app_initialized)
     {
         game_state = BootstrapPushStruct(GameState, permanent_arena);
@@ -83,7 +83,7 @@ AppUpdateAndRender(Platform *platform_)
         InitializeRenderState(&platform->backbuffer, &game_state->world_font, &game_state->ui_font);
         InitializeInputBindings();
 
-#if 1
+#if 0
         AddRoom(MakeRect2iMinDim(1, 1, 16, 16));
 
         Entity *martins = AddEntity(StringLiteral("Martins"), MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1));
@@ -117,7 +117,6 @@ AppUpdateAndRender(Platform *platform_)
             }
         }
 #else
-        GenerateWorld(0xDEADBEEF);
 #endif
 
         platform->app_initialized = true;
@@ -125,63 +124,108 @@ AppUpdateAndRender(Platform *platform_)
 
     HandleInput();
 
-    static bool erase = false;
-    if (Pressed(input->alt_interact))
+    static bool go_nuts = false;
+    if (!go_nuts && Pressed(input->alt_interact))
     {
-        if (TileBlocked(input->world_mouse_p))
-        {
-            erase = true;
-        }
-        else
-        {
-            erase = false;
-        }
+        go_nuts = true;
+        game_state->gen_tiles = BeginGenerateWorld(0xDEADBEEF);
     }
 
-    if (input->alt_interact.ended_down)
+    if (go_nuts)
     {
-        EntityIter it = GetEntitiesAt(input->world_mouse_p);
-        if (erase && IsValid(it))
+        if (!game_state->world_generated)
         {
-            for (; IsValid(it); Next(&it))
-            {
-                KillEntity(it.entity);
-            }
-        }
-        else
-        {
-            AddWall(input->world_mouse_p);
+            game_state->world_generated = EndGenerateWorld(&game_state->gen_tiles);
         }
     }
 
     BeginRender();
 
-    UpdateAndRenderEntities();
-
-    DrawRect(Draw_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13), COLOR_WHITE, COLOR_BLACK);
-    if (entity_manager->player)
+    if (game_state->world_generated)
     {
-        Entity *player = entity_manager->player;
-
-        V2i at_p = MakeV2i(4, render_state->ui_top_right.y - 3);
-        for (Entity *item = player->first_in_inventory;
-             item;
-             item = item->next_in_inventory)
+        static bool erase = false;
+        if (Pressed(input->alt_interact))
         {
-            DrawText(Draw_Ui, at_p,
-                     FormatTempString("Item: %.*s", StringExpand(item->name)),
-                     COLOR_WHITE, COLOR_BLACK);
+            if (TileBlocked(input->world_mouse_p))
+            {
+                erase = true;
+            }
+            else
+            {
+                erase = false;
+            }
+        }
+
+        if (input->alt_interact.ended_down)
+        {
+            EntityIter it = GetEntitiesAt(input->world_mouse_p);
+            if (erase && IsValid(it))
+            {
+                for (; IsValid(it); Next(&it))
+                {
+                    KillEntity(it.entity);
+                }
+            }
+            else
+            {
+                AddWall(input->world_mouse_p);
+            }
+        }
+
+        UpdateAndRenderEntities();
+
+#if 0
+        DrawRect(Draw_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13), COLOR_WHITE, COLOR_BLACK);
+        if (entity_manager->player)
+        {
+            Entity *player = entity_manager->player;
+
+            V2i at_p = MakeV2i(4, render_state->ui_top_right.y - 3);
+            for (Entity *item = player->first_in_inventory;
+                 item;
+                 item = item->next_in_inventory)
+            {
+                DrawText(Draw_Ui, at_p,
+                         FormatTempString("Item: %.*s", StringExpand(item->name)),
+                         COLOR_WHITE, COLOR_BLACK);
+                at_p.y -= 1;
+            }
+        }
+
+        V2i at_p = MakeV2i(40, render_state->ui_top_right.y - 3);
+        for (PlatformLogLine *line = platform->GetFirstLogLine();
+             line;
+             line = platform->GetNextLogLine(line))
+        {
+            DrawText(Draw_Ui, at_p, line->string, COLOR_WHITE, COLOR_BLACK);
             at_p.y -= 1;
         }
+#endif
     }
-
-    V2i at_p = MakeV2i(40, render_state->ui_top_right.y - 3);
-    for (PlatformLogLine *line = platform->GetFirstLogLine();
-         line;
-         line = platform->GetNextLogLine(line))
+    else if (go_nuts)
     {
-        DrawText(Draw_Ui, at_p, FormatTempString("%s", line->text), COLOR_WHITE, COLOR_BLACK);
-        at_p.y -= 1;
+        GenTiles *tiles = game_state->gen_tiles;
+
+        for (int y = 0; y < tiles->h; ++y)
+        for (int x = 0; x < tiles->w; ++x)
+        {
+            V2i p = MakeV2i(x, y);
+            GenTile tile = GetTile(tiles, p);
+            if (tile == GenTile_Wall)
+            {
+                BlitRect(render_state->target, MakeRect2iMinDim(2*p, MakeV2i(2, 2)), COLOR_WHITE);
+            }
+            else if (tile == GenTile_Room)
+            {
+                int times_set = tiles->times_set[p.y*tiles->w + p.x];
+                BlitRect(render_state->target, MakeRect2iMinDim(2*p, MakeV2i(2, 2)), MakeColor(255, (uint8_t)Clamp(times_set, 0, 255), 0));
+                BlitRect(render_state->target, MakeRect2iMinDim(2*(p + MakeV2i(tiles->w, 0)), MakeV2i(2, 2)), MakeColor(255, (uint8_t)Clamp(times_set, 0, 255), 0));
+            }
+            else if (tile == GenTile_Void)
+            {
+                BlitRect(render_state->target, MakeRect2iMinDim(2*p, MakeV2i(2, 2)), COLOR_BLACK);
+            }
+        }
     }
 
     EndRender();

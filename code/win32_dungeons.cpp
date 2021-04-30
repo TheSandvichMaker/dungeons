@@ -278,8 +278,11 @@ Win32_LogPrint(PlatformLogLevel level, char *fmt, ...)
 
         EndTicketMutex(&state->log_mutex);
 
-        CopySize(line_length, line_start, line->text);
-        line->text[line_length] = 0;
+        CopySize(line_length, line_start, line->data_);
+        line->data_[line_length] = 0;
+
+        line->string.size = line_length;
+        line->string.data = line->data_;
 
         line->level = level;
 
@@ -865,6 +868,12 @@ Win32_InitializeJobQueue(PlatformJobQueue *queue, int thread_count)
 }
 
 static void
+Win32_SleepThread(int milliseconds)
+{
+    Sleep(milliseconds);
+}
+
+static void
 Win32_AddJob(PlatformJobQueue *queue, void *args, PlatformJobProc *proc)
 {
     uint32_t new_next_write = queue->next_write + 1;
@@ -943,6 +952,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     platform->ReadFile = Win32_ReadFile;
     platform->GetTime = Win32_GetTime;
     platform->SecondsElapsed = Win32_SecondsElapsed;
+    platform->SleepThread = Win32_SleepThread;
 
     win32_state.thread_local_index = TlsAlloc();
     if (win32_state.thread_local_index == TLS_OUT_OF_INDEXES)
@@ -1055,26 +1065,26 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
                     {
                         case WM_LBUTTONDOWN: case WM_LBUTTONUP:
                         {
-                            event->input_code = PlatformInputCode_MouseLeft;
+                            event->input_code = PlatformInputCode_LButton;
                         } break;
                         case WM_MBUTTONDOWN: case WM_MBUTTONUP:
                         {
-                            event->input_code = PlatformInputCode_MouseMiddle;
+                            event->input_code = PlatformInputCode_MButton;
                         } break;
                         case WM_RBUTTONDOWN: case WM_RBUTTONUP:
                         {
-                            event->input_code = PlatformInputCode_MouseRight;
+                            event->input_code = PlatformInputCode_RButton;
                         } break;
                         case WM_XBUTTONDOWN: case WM_XBUTTONUP:
                         {
                             if (GET_XBUTTON_WPARAM(message.wParam) == XBUTTON1)
                             {
-                                event->input_code = PlatformInputCode_MouseExtended0;
+                                event->input_code = PlatformInputCode_XButton1;
                             }
                             else
                             {
                                 Assert(GET_XBUTTON_WPARAM(message.wParam) == XBUTTON2);
-                                event->input_code = PlatformInputCode_MouseExtended1;
+                                event->input_code = PlatformInputCode_XButton2;
                             }
                         } break;
                     }

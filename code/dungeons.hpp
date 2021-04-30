@@ -15,6 +15,7 @@
 #include "dungeons_render.hpp"
 #include "dungeons_controller.hpp"
 #include "dungeons_entity.hpp"
+#include "dungeons_worldgen.hpp"
 
 struct GameState
 {
@@ -23,8 +24,12 @@ struct GameState
     Arena permanent_arena;
     Arena transient_arena;
 
+    bool world_generated;
+    GenTiles *gen_tiles;
+
     Font world_font;
     Font ui_font;
 };
+static GameState *game_state;
 
 #endif /* DUNGEONS_HPP */

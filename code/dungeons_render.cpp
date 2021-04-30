@@ -270,13 +270,14 @@ DrawTile(DrawMode mode, V2i tile_p, Sprite sprite)
     DirtyRects *rects = &layer->rects;
     V2i rect_p = tile_p / MakeV2i(rects->glyphs_per_row, rects->glyphs_per_col);
 
-    Assert((rect_p.x >= 0) &&
-           (rect_p.y >= 0) &&
-           (rect_p.x < rects->rect_count_x) &&
-           (rect_p.y < rects->rect_count_y));
-
-    uint64_t *hash = &rects->rect_hashes[rect_p.y*rects->rect_count_x + rect_p.x];
-    *hash = HashData(*hash, sizeof(*to_draw), to_draw);
+    if ((rect_p.x >= 0) &&
+        (rect_p.y >= 0) &&
+        (rect_p.x < rects->rect_count_x) &&
+        (rect_p.y < rects->rect_count_y))
+    {
+        uint64_t *hash = &rects->rect_hashes[rect_p.y*rects->rect_count_x + rect_p.x];
+        *hash = HashData(*hash, sizeof(*to_draw), to_draw);
+    }
 }
 
 static inline void
@@ -410,7 +411,7 @@ PLATFORM_JOB(TiledRenderJob)
     }
 }
 
-static void
+static inline void
 RenderLayer(SpriteLayer *layer)
 {
     DirtyRects *rects = &layer->rects;
@@ -465,7 +466,20 @@ EndRender(void)
 {
     for (size_t i = Draw_FIRST; i < Draw_COUNT; ++i)
     {
-        SpriteLayer *layer = GetSpriteLayer((DrawMode)i);
-        RenderLayer(layer);
+        // SpriteLayer *layer = GetSpriteLayer((DrawMode)i);
+        // RenderLayer(layer);
+    }
+    SpriteLayer *layer = GetSpriteLayer(Draw_World);
+    for (SpriteChunk *chunk = layer->first_sprite_chunk;
+         chunk;
+         chunk = chunk->next)
+    {
+        for (size_t i = 0; i < chunk->sprite_count; ++i)
+        {
+            SpriteToDraw *to_draw = &chunk->sprites[i];
+            V2i p = to_draw->p;
+
+            BlitRect(render_state->target, MakeRect2iMinDim(2*p, MakeV2i(2, 2)), COLOR_WHITE);
+        }
     }
 }

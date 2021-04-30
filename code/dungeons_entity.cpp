@@ -517,6 +517,7 @@ PlayerAct(void)
     if (Triggered(input->west))      move += MakeV2i(-1,  0);
     if (Triggered(input->northwest)) move += MakeV2i(-1,  1);
 
+    bool result = false;
     if (!AreEqual(move, MakeV2i(0, 0)))
     {
         V2i move_p = player->p + move;
@@ -541,6 +542,7 @@ PlayerAct(void)
             else if (HasProperty(e, EntityProperty_Item))
             {
                 AddToInventory(player, e);
+                result = true;
             }
         }
 
@@ -551,7 +553,7 @@ PlayerAct(void)
         }
     }
 
-    return false;
+    return result;
 }
 
 static inline void
@@ -579,7 +581,7 @@ UpdateAndRenderEntities(void)
                     Path best_path = {};
                     best_path.length = UINT32_MAX;
 
-                    Entity *best_c = nullptr;
+                    Entity *closest_target = nullptr;
 
                     EntityIter target_it = IterateAllEntities(EntityProperty_C);
                     if (!IsValid(target_it))
@@ -589,24 +591,24 @@ UpdateAndRenderEntities(void)
 
                     for (; IsValid(target_it); Next(&target_it))
                     {
-                        Entity *c = target_it.entity;
+                        Entity *test_target = target_it.entity;
 
-                        Path path = FindPath(&entity_manager->turn_arena, e->p, c->p);
+                        Path path = FindPath(&entity_manager->turn_arena, e->p, test_target->p);
                         if (path.length > 0 && path.length < best_path.length)
                         {
-                            best_c = c;
+                            closest_target = test_target;
                             best_path = path;
                         }
                     }
 
-                    if (best_c)
+                    if (closest_target)
                     {
                         V2i new_p = best_path.positions[0];
-                        if (AreEqual(new_p, best_c->p))
+                        if (AreEqual(new_p, closest_target->p))
                         {
-                            if (DamageEntity(best_c, 999))
+                            if (DamageEntity(closest_target, 999))
                             {
-                                platform->LogPrint(PlatformLogLevel_Info, "Martins eviscerated a %.*s", StringExpand(best_c->name));
+                                platform->LogPrint(PlatformLogLevel_Info, "Martins eviscerated a %.*s", StringExpand(closest_target->name));
                             }
                         }
                         else
