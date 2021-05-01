@@ -12,6 +12,7 @@ enum GenTile
     GenTile_Void = 0,
     GenTile_Room,
     GenTile_Wall,
+    GenTile_Door,
     GenTile_NotAllowed,
 };
 

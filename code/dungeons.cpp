@@ -59,6 +59,15 @@ LoadFontFromDisk(Arena *arena, String filename, int glyph_w, int glyph_h)
     return result;
 }
 
+DUNGEONS_INLINE Color
+LinearToSRGB(V3 linear)
+{
+    Color result = MakeColor((uint8_t)(SquareRoot(linear.x)*255.0f),
+                             (uint8_t)(SquareRoot(linear.y)*255.0f),
+                             (uint8_t)(SquareRoot(linear.z)*255.0f));
+    return result;
+}
+
 void
 AppUpdateAndRender(Platform *platform_)
 {
@@ -206,19 +215,33 @@ AppUpdateAndRender(Platform *platform_)
         {
             V2i p = MakeV2i(x, y);
             GenTile tile = GetTile(tiles, p);
-            if (tile == GenTile_Wall)
+
+            Color color = COLOR_BLACK;
+
+            switch (tile)
             {
-                BlitRect(render_state->target, MakeRect2iMinDim(scale*p, MakeV2i(scale)), COLOR_WHITE);
+                case GenTile_Wall:
+                {
+                    color = COLOR_WHITE;
+                } break;
+
+                case GenTile_Room:
+                {
+                    color = MakeColor(127, 63, 0);
+                } break;
+
+                case GenTile_Door:
+                {
+                    color = MakeColor(255, 127, 0);
+                } break;
+
+                default:
+                {
+                    /* ... */
+                } break;
             }
-            else if (tile == GenTile_Room)
-            {
-                int times_set = tiles->times_set[p.y*tiles->w + p.x];
-                BlitRect(render_state->target, MakeRect2iMinDim(scale*p, MakeV2i(scale)), MakeColor(128, (uint8_t)Clamp(times_set, 0, 255), 0));
-            }
-            else if (tile == GenTile_Void)
-            {
-                BlitRect(render_state->target, MakeRect2iMinDim(scale*p, MakeV2i(scale)), COLOR_BLACK);
-            }
+
+            BlitRect(render_state->target, MakeRect2iMinDim(scale*p, MakeV2i(scale)), color);
         }
     }
 
