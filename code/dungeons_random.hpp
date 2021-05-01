@@ -35,7 +35,7 @@ RandomUnilateral(RandomSeries* series)
 }
 
 static inline uint32_t
-RandomChance(RandomSeries* series, uint32_t range)
+RandomChoice(RandomSeries* series, uint32_t range)
 {
     uint32_t result = NextInSeries(series) % range;
     return result;
@@ -44,7 +44,7 @@ RandomChance(RandomSeries* series, uint32_t range)
 static inline uint32_t
 DiceRoll(RandomSeries* series, uint32_t sides)
 {
-    uint32_t result = 1 + RandomChance(series, sides);
+    uint32_t result = 1 + RandomChoice(series, sides);
     return result;
 }
 
@@ -56,6 +56,15 @@ RandomRange(RandomSeries* series, int32_t min, int32_t max)
         max = min;
     }
     int32_t result = min + (int32_t)(NextInSeries(series) % (max - min + 1));
+    return result;
+}
+
+static inline V2i
+RandomInRect(RandomSeries *series, Rect2i rect)
+{
+    V2i result;
+    result.x = RandomRange(series, rect.min.x, rect.max.x);
+    result.y = RandomRange(series, rect.min.y, rect.max.y);
     return result;
 }
 

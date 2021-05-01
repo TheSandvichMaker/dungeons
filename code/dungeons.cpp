@@ -124,19 +124,13 @@ AppUpdateAndRender(Platform *platform_)
 
     HandleInput();
 
-    static bool go_nuts = false;
-    if (!go_nuts && Pressed(input->alt_interact))
+    if (!game_state->world_generated)
     {
-        go_nuts = true;
-        game_state->gen_tiles = BeginGenerateWorld(0xDEADBEEF);
-    }
-
-    if (go_nuts)
-    {
-        if (!game_state->world_generated)
+        if (!game_state->gen_tiles && Pressed(input->alt_interact))
         {
-            game_state->world_generated = EndGenerateWorld(&game_state->gen_tiles);
+            game_state->gen_tiles = BeginGenerateWorld(0xDEADBEFC);
         }
+        game_state->world_generated = EndGenerateWorld(&game_state->gen_tiles);
     }
 
     BeginRender();
@@ -172,7 +166,7 @@ AppUpdateAndRender(Platform *platform_)
             }
         }
 
-        UpdateAndRenderEntities();
+        // UpdateAndRenderEntities();
 
 #if 0
         DrawRect(Draw_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13), COLOR_WHITE, COLOR_BLACK);
@@ -202,10 +196,11 @@ AppUpdateAndRender(Platform *platform_)
         }
 #endif
     }
-    else if (go_nuts)
+    else if (game_state->gen_tiles)
     {
         GenTiles *tiles = game_state->gen_tiles;
 
+        int scale = 2;
         for (int y = 0; y < tiles->h; ++y)
         for (int x = 0; x < tiles->w; ++x)
         {
@@ -213,17 +208,16 @@ AppUpdateAndRender(Platform *platform_)
             GenTile tile = GetTile(tiles, p);
             if (tile == GenTile_Wall)
             {
-                BlitRect(render_state->target, MakeRect2iMinDim(2*p, MakeV2i(2, 2)), COLOR_WHITE);
+                BlitRect(render_state->target, MakeRect2iMinDim(scale*p, MakeV2i(scale)), COLOR_WHITE);
             }
             else if (tile == GenTile_Room)
             {
                 int times_set = tiles->times_set[p.y*tiles->w + p.x];
-                BlitRect(render_state->target, MakeRect2iMinDim(2*p, MakeV2i(2, 2)), MakeColor(255, (uint8_t)Clamp(times_set, 0, 255), 0));
-                BlitRect(render_state->target, MakeRect2iMinDim(2*(p + MakeV2i(tiles->w, 0)), MakeV2i(2, 2)), MakeColor(255, (uint8_t)Clamp(times_set, 0, 255), 0));
+                BlitRect(render_state->target, MakeRect2iMinDim(scale*p, MakeV2i(scale)), MakeColor(128, (uint8_t)Clamp(times_set, 0, 255), 0));
             }
             else if (tile == GenTile_Void)
             {
-                BlitRect(render_state->target, MakeRect2iMinDim(2*p, MakeV2i(2, 2)), COLOR_BLACK);
+                BlitRect(render_state->target, MakeRect2iMinDim(scale*p, MakeV2i(scale)), COLOR_BLACK);
             }
         }
     }
