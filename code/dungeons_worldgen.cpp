@@ -145,51 +145,6 @@ PLATFORM_JOB(DoWorldGen)
             }
         }
     }
-
-    //
-    // Cull dead ends
-    //
-
-    for (int dead_end_index = 0; dead_end_index < dead_end_count; ++dead_end_index)
-    {
-        V2i at_p = dead_ends[dead_end_index];
-
-        for (;;)
-        {
-            if (RandomChoice(&entropy, 64) == 0)
-            {
-                break;
-            }
-
-            V2i directions[] =
-            {
-                MakeV2i(-1, 0), MakeV2i(1, 0), MakeV2i(0, -1), MakeV2i(0, 1),
-            };
-
-            int neighbor_count = 0;
-            V2i next_p = MakeV2i(0, 0);
-            for (int direction_index = 0; direction_index < 4; ++direction_index)
-            {
-                V2i direction = directions[direction_index];
-                V2i test_p = at_p + direction;
-                if (GetTile(tiles, test_p) == GenTile_Room)
-                {
-                    neighbor_count += 1;
-                    next_p = at_p + direction;
-                }
-            }
-
-            if (neighbor_count == 1)
-            {
-                SetTile(tiles, at_p, GenTile_Void);
-                at_p = next_p;
-            }
-            else
-            {
-                break;
-            }
-        }
-    }
     
     //
     // Add doors to rooms
@@ -258,6 +213,63 @@ PLATFORM_JOB(DoWorldGen)
                     SetTile(tiles, option, GenTile_Room);
                     break;
                 }
+            }
+        }
+    }
+
+    //
+    // Cull dead ends
+    //
+
+    for (int dead_end_index = 0; dead_end_index < dead_end_count; ++dead_end_index)
+    {
+        V2i at_p = dead_ends[dead_end_index];
+
+        for (;;)
+        {
+            // if (RandomChoice(&entropy, 64) == 0)
+            // {
+            //     break;
+            // }
+
+            V2i directions[] =
+            {
+                MakeV2i(-1, 0), MakeV2i(1, 0), MakeV2i(0, -1), MakeV2i(0, 1),
+            };
+
+            int neighbor_count = 0;
+            V2i neighbors[4];
+
+            for (int direction_index = 0; direction_index < 4; ++direction_index)
+            {
+                V2i direction = directions[direction_index];
+                V2i test_p = at_p + direction;
+                if (GetTile(tiles, test_p) == GenTile_Room)
+                {
+                    neighbors[neighbor_count++] = test_p;
+                }
+            }
+
+            if (neighbor_count == 1)
+            {
+                SetTile(tiles, at_p, GenTile_Void);
+                at_p = neighbors[0];
+            }
+#if 0
+            else if (neighbor_count > 1)
+            {
+                // this doesn't seem vibin'
+                bool create_loop = (RandomChoice(&entropy, 32) == 0);
+                if (create_loop)
+                {
+                    SetTile(tiles, neighbors[RandomChoice(&entropy, neighbor_count)], GenTile_Void);
+                    break;
+                }
+            }
+#endif
+            else
+            {
+                break;
             }
         }
     }
