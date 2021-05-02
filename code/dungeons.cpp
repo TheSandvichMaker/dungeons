@@ -62,9 +62,9 @@ LoadFontFromDisk(Arena *arena, String filename, int glyph_w, int glyph_h)
 DUNGEONS_INLINE Color
 LinearToSRGB(V3 linear)
 {
-    Color result = MakeColor((uint8_t)(SquareRoot(linear.x)*255.0f),
-                             (uint8_t)(SquareRoot(linear.y)*255.0f),
-                             (uint8_t)(SquareRoot(linear.z)*255.0f));
+    Color result = MakeColor((uint8_t)(linear.x*255.0f),
+                             (uint8_t)(linear.y*255.0f),
+                             (uint8_t)(linear.z*255.0f));
     return result;
 }
 
@@ -88,7 +88,7 @@ AppUpdateAndRender(Platform *platform_)
     if (!platform->app_initialized)
     {
         game_state->tileset    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("tileset.bmp"), 16, 16);
-        game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font16x16.bmp"), 16, 16);
+        game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font16x16_alt1.bmp"), 16, 16);
         game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font8x16.bmp"), 8, 16);
         InitializeRenderState(&platform->backbuffer, &game_state->world_font, &game_state->ui_font);
         InitializeInputBindings();
@@ -176,13 +176,14 @@ AppUpdateAndRender(Platform *platform_)
             }
         }
 
-        // UpdateAndRenderEntities();
+        UpdateAndRenderEntities();
 
-#if 0
+        Entity *player = entity_manager->player;
+#if 1
         DrawRect(Draw_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13), COLOR_WHITE, COLOR_BLACK);
-        if (entity_manager->player)
+        if (player)
         {
-            Entity *player = entity_manager->player;
+            render_state->camera_bottom_left = player->p - MakeV2i(42, 20);
 
             V2i at_p = MakeV2i(4, render_state->ui_top_right.y - 3);
             for (Entity *item = player->first_in_inventory;
@@ -206,6 +207,7 @@ AppUpdateAndRender(Platform *platform_)
         }
 #endif
     }
+#if 0
     else if (game_state->gen_tiles)
     {
         GenTiles *tiles = game_state->gen_tiles;
@@ -219,25 +221,28 @@ AppUpdateAndRender(Platform *platform_)
 
             p *= scale;
 
+            Glyph glyph = 0;
             Color color = COLOR_BLACK;
 
-            bool do_room = false;
             switch (tile)
             {
                 case GenTile_Wall:
                 {
                     color = COLOR_WHITE;
+                    glyph = '#';
                 } break;
 
                 case GenTile_Room:
                 {
-                    color = MakeColor(127, 63, 0);
-                    do_room = true;
+                    float perlin = OctavePerlinNoise(0.01f*(float)p.x, 0.01f*(float)p.y, 6, 0.65f);
+                    color = LinearToSRGB(Lerp(MakeV3(0.0f, 1.0f, 0.0f), MakeV3(1.0f, 0.0f, 0.0f), perlin));
+                    glyph = ':';
                 } break;
 
                 case GenTile_Door:
                 {
                     color = MakeColor(255, 127, 0);
+                    glyph = '$';
                 } break;
 
                 default:
@@ -246,26 +251,10 @@ AppUpdateAndRender(Platform *platform_)
                 } break;
             }
 
-            if (do_room)
-            {
-                float perlin = OctavePerlinNoise(0.01f*(float)p.x, 0.01f*(float)p.y, 6, 0.65f);
-                Bitmap tile_bitmap;
-                if (perlin > 0.5f)
-                {
-                    tile_bitmap = MakeBitmapView(&game_state->tileset.bitmap, GetGlyphRect(&game_state->tileset, 1));
-                }
-                else
-                {
-                    tile_bitmap = MakeBitmapView(&game_state->tileset.bitmap, GetGlyphRect(&game_state->tileset, 0));
-                }
-                BlitBitmap(render_state->target, &tile_bitmap, p);
-            }
-            else
-            {
-                BlitRect(render_state->target, MakeRect2iMinDim(p, MakeV2i(scale)), color);
-            }
+            BlitCharMask(render_state->target, &game_state->world_font, p, glyph, color, COLOR_BLACK);
         }
     }
+#endif
 
     EndRender();
 }

@@ -256,10 +256,6 @@ static inline void
 DrawTile(DrawMode mode, V2i tile_p, Sprite sprite)
 {
     SpriteLayer *layer = GetSpriteLayer(mode);
-    if (mode == Draw_World)
-    {
-        tile_p -= render_state->camera_bottom_left;
-    }
 
     SpriteChunk *chunk = GetAvailableSpriteChunk(layer);
 
@@ -275,8 +271,18 @@ DrawTile(DrawMode mode, V2i tile_p, Sprite sprite)
         (rect_p.x < rects->rect_count_x) &&
         (rect_p.y < rects->rect_count_y))
     {
+        if (mode == Draw_World)
+        {
+            to_draw->p -= render_state->camera_bottom_left;
+        }
+
         uint64_t *hash = &rects->rect_hashes[rect_p.y*rects->rect_count_x + rect_p.x];
         *hash = HashData(*hash, sizeof(*to_draw), to_draw);
+
+        if (mode == Draw_World)
+        {
+            to_draw->p += render_state->camera_bottom_left;
+        }
     }
 }
 
@@ -374,6 +380,7 @@ struct TiledRenderJobParams
 {
     SpriteLayer *layer;
     Rect2i clip_rect;
+    DrawMode mode;
 };
 
 static
@@ -385,6 +392,7 @@ PLATFORM_JOB(TiledRenderJob)
     Font *font = layer->font;
 
     Rect2i clip_rect = params->clip_rect;
+    DrawMode mode = params->mode;
 
     Bitmap target = MakeBitmapView(render_state->target, clip_rect);
     ClearBitmap(&target, COLOR_BLACK);
@@ -398,7 +406,13 @@ PLATFORM_JOB(TiledRenderJob)
             SpriteToDraw *to_draw = &chunk->sprites[i];
             Sprite *sprite = &to_draw->sprite;
 
-            V2i p = MakeV2i(to_draw->p.x*font->glyph_w, to_draw->p.y*font->glyph_h);
+            V2i p = MakeV2i(to_draw->p.x, to_draw->p.y);
+            if (mode == Draw_World)
+            {
+                p -= render_state->camera_bottom_left;
+            }
+            p *= MakeV2i(font->glyph_w, font->glyph_h);
+
             if (RectanglesOverlap(clip_rect, MakeRect2iMinDim(p, MakeV2i(font->glyph_w, font->glyph_h))))
             {
                 p -= clip_rect.min;
@@ -439,7 +453,7 @@ RenderLayer(SpriteLayer *layer)
             uint64_t prev_rect_hash = prev_rects->rect_hashes[tile_index];
             if (this_rect_hash == prev_rect_hash)
             {
-                continue;
+                // continue;
             }
         }
 
@@ -453,6 +467,11 @@ RenderLayer(SpriteLayer *layer)
 
         params->clip_rect = clip_rect;
 
+        if (layer == GetSpriteLayer(Draw_World))
+        {
+            params->mode = Draw_World;
+        }
+
         platform->AddJob(platform->high_priority_queue, params, TiledRenderJob);
     }
 
@@ -464,11 +483,9 @@ RenderLayer(SpriteLayer *layer)
 static void
 EndRender(void)
 {
-    for (size_t i = Draw_FIRST; i < Draw_COUNT; ++i)
-    {
-        // SpriteLayer *layer = GetSpriteLayer((DrawMode)i);
-        // RenderLayer(layer);
-    }
+    SpriteLayer *layer = GetSpriteLayer(Draw_World);
+    RenderLayer(layer);
+#if 0
     SpriteLayer *layer = GetSpriteLayer(Draw_World);
     for (SpriteChunk *chunk = layer->first_sprite_chunk;
          chunk;
@@ -482,4 +499,5 @@ EndRender(void)
             BlitRect(render_state->target, MakeRect2iMinDim(2*p, MakeV2i(2, 2)), COLOR_WHITE);
         }
     }
+#endif
 }

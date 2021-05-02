@@ -415,7 +415,16 @@ PLATFORM_JOB(DoWorldGen)
         {
             AddWall(p);
         }
+
+        if (tile == GenTile_Door)
+        {
+            AddDoor(p);
+        }
     }
+
+    GenRoom *starting_room = &tiles->rooms[RandomChoice(&entropy, tiles->room_count)];
+    V2i player_spawn_p = (starting_room->rect.min + starting_room->rect.max) / 2;
+    AddPlayer(player_spawn_p);
 
     tiles->complete = true;
 }

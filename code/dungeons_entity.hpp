@@ -4,6 +4,9 @@
 #define MAX_ENTITY_COUNT (1 << 16)
 #define ENTITY_HASH_SIZE 8192
 
+#define WORLD_SIZE_X 1024
+#define WORLD_SIZE_Y 1024
+
 struct Path
 {
     uint32_t length;
@@ -18,6 +21,7 @@ enum EntityPropertyKind
     EntityProperty_Blocking,
     EntityProperty_PlayerControlled,
     EntityProperty_Invulnerable,
+    EntityProperty_Door,
     EntityProperty_Item,
     EntityProperty_Martins,
     EntityProperty_C,
@@ -113,7 +117,7 @@ struct EntityManager
     Entity *player;
 
     Entity entities[MAX_ENTITY_COUNT];
-    Entity *entity_hash[ENTITY_HASH_SIZE];
+    Entity *entity_grid[WORLD_SIZE_X][WORLD_SIZE_Y];
 };
 GLOBAL_STATE(EntityManager, entity_manager);
 

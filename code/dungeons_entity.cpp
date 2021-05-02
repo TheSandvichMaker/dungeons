@@ -1,3 +1,12 @@
+static inline bool
+IsInWorld(V2i p)
+{
+    return ((p.x >= 0) &&
+            (p.y >= 0) &&
+            (p.x < WORLD_SIZE_X) &&
+            (p.y < WORLD_SIZE_Y));
+}
+
 static inline Entity *
 GetEntity(EntityHandle handle)
 {
@@ -12,8 +21,8 @@ GetEntity(EntityHandle handle)
 static inline bool
 RemoveEntityFromGrid(Entity *e)
 {
-    uint64_t slot = HashCoordinate(e->p) % ENTITY_HASH_SIZE;
-    for (Entity **it_at = &entity_manager->entity_hash[slot];
+    Assert(IsInWorld(e->p));
+    for (Entity **it_at = &entity_manager->entity_grid[e->p.x][e->p.y];
          *it_at;
          it_at = &(*it_at)->next_on_tile)
     {
@@ -35,8 +44,9 @@ RemoveEntityFromGrid(Entity *e)
 static inline bool
 MoveEntity(Entity *e, V2i p)
 {
-    uint64_t slot = HashCoordinate(p) % ENTITY_HASH_SIZE;
-    for (Entity *it = entity_manager->entity_hash[slot];
+    Assert(IsInWorld(e->p));
+    Assert(IsInWorld(p));
+    for (Entity *it = entity_manager->entity_grid[p.x][p.y];
          it;
          it = it->next_on_tile)
     {
@@ -48,8 +58,8 @@ MoveEntity(Entity *e, V2i p)
 
     RemoveEntityFromGrid(e);
 
-    e->next_on_tile = entity_manager->entity_hash[slot];
-    entity_manager->entity_hash[slot] = e;
+    e->next_on_tile = entity_manager->entity_grid[p.x][p.y];
+    entity_manager->entity_grid[p.x][p.y] = e;
 
     e->p = p;
 
@@ -99,8 +109,16 @@ AddEntity(String name, V2i p, Sprite sprite, EntityPropertySet initial_propertie
 static inline Entity *
 AddWall(V2i p)
 {
-    Entity *e = AddEntity(StringLiteral("Wall"), p, MakeSprite(Glyph_Tone50));
+    Entity *e = AddEntity(StringLiteral("Wall"), p, MakeSprite('#', MakeColor(225, 225, 225)));
     SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Blocking);
+    return e;
+}
+
+static inline Entity *
+AddDoor(V2i p)
+{
+    Entity *e = AddEntity(StringLiteral("Door"), p, MakeSprite('$', MakeColor(255, 127, 0)));
+    SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Door|EntityProperty_Blocking);
     return e;
 }
 
@@ -246,8 +264,12 @@ Next(EntityIter *iter)
 static inline EntityIter
 GetEntitiesAt(V2i p, EntityPropertySet filter = {})
 {
-    Entity *list = entity_manager->entity_hash[HashCoordinate(p) % ENTITY_HASH_SIZE];
-    EntityIter result = IterateEntityList(list, next_on_tile, filter);
+    EntityIter result = {};
+    if (IsInWorld(p))
+    {
+        Entity *list = entity_manager->entity_grid[p.x][p.y];
+        result = IterateEntityList(list, next_on_tile, filter);
+    }
     return result;
 }
 
@@ -526,7 +548,11 @@ PlayerAct(void)
         for (EntityIter at_move_p = GetEntitiesAt(move_p); IsValid(at_move_p); Next(&at_move_p))
         {
             Entity *e = at_move_p.entity;
-            if (HasProperty(e, EntityProperty_Blocking))
+            if (HasProperty(e, EntityProperty_Door))
+            {
+                DamageEntity(e, 999);
+            }
+            else if (HasProperty(e, EntityProperty_Blocking))
             {
                 if (HasProperty(e, EntityProperty_Invulnerable))
                 {
