@@ -27,6 +27,8 @@ struct GameState
     bool world_generated;
     GenTiles *gen_tiles;
 
+    Font tileset;
+
     Font world_font;
     Font ui_font;
 };

@@ -87,6 +87,7 @@ AppUpdateAndRender(Platform *platform_)
 
     if (!platform->app_initialized)
     {
+        game_state->tileset    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("tileset.bmp"), 16, 16);
         game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font16x16.bmp"), 16, 16);
         game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font8x16.bmp"), 8, 16);
         InitializeRenderState(&platform->backbuffer, &game_state->world_font, &game_state->ui_font);
@@ -209,15 +210,18 @@ AppUpdateAndRender(Platform *platform_)
     {
         GenTiles *tiles = game_state->gen_tiles;
 
-        int scale = 2;
+        int scale = 16;
         for (int y = 0; y < tiles->h; ++y)
         for (int x = 0; x < tiles->w; ++x)
         {
             V2i p = MakeV2i(x, y);
             GenTile tile = GetTile(tiles, p);
 
+            p *= scale;
+
             Color color = COLOR_BLACK;
 
+            bool do_room = false;
             switch (tile)
             {
                 case GenTile_Wall:
@@ -228,6 +232,7 @@ AppUpdateAndRender(Platform *platform_)
                 case GenTile_Room:
                 {
                     color = MakeColor(127, 63, 0);
+                    do_room = true;
                 } break;
 
                 case GenTile_Door:
@@ -241,7 +246,24 @@ AppUpdateAndRender(Platform *platform_)
                 } break;
             }
 
-            BlitRect(render_state->target, MakeRect2iMinDim(scale*p, MakeV2i(scale)), color);
+            if (do_room)
+            {
+                float perlin = OctavePerlinNoise(0.01f*(float)p.x, 0.01f*(float)p.y, 6, 0.65f);
+                Bitmap tile_bitmap;
+                if (perlin > 0.5f)
+                {
+                    tile_bitmap = MakeBitmapView(&game_state->tileset.bitmap, GetGlyphRect(&game_state->tileset, 1));
+                }
+                else
+                {
+                    tile_bitmap = MakeBitmapView(&game_state->tileset.bitmap, GetGlyphRect(&game_state->tileset, 0));
+                }
+                BlitBitmap(render_state->target, &tile_bitmap, p);
+            }
+            else
+            {
+                BlitRect(render_state->target, MakeRect2iMinDim(p, MakeV2i(scale)), color);
+            }
         }
     }
 
