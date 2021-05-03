@@ -369,7 +369,7 @@ TraceLine(V2i start, V2i end, Sprite sprite = MakeSprite(0))
 
             if (sprite.glyph)
             {
-                DrawTile(Draw_World, p, sprite);
+                PushTile(Layer_World, p, sprite);
             }
         }
 
@@ -681,7 +681,7 @@ UpdateAndRenderEntities(void)
             KillEntity(e);
         }
 
-        DrawTile(Draw_World, e->p, sprite);
+        PushTile(Layer_World, e->p, sprite);
     }
 }
 

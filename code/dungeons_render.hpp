@@ -122,42 +122,24 @@ enum WallSegment
     Wall_MAXVALUE = Wall_LeftThick|Wall_RightThick|Wall_TopThick|Wall_BottomThick,
 };
 
-enum DrawMode
+enum RenderLayer
 {
-    Draw_None,
-    Draw_World,
-    Draw_FIRST = Draw_World,
-    Draw_Ui,
-    Draw_COUNT,
+    Layer_None,
+    Layer_World,
+    Layer_Ui,
+    Layer_COUNT,
 };
 
-struct SpriteToDraw
+struct RenderSortKey
 {
-    Sprite sprite;
+    uint32_t offset : 30;
+    uint32_t layer  : 2;
+};
+
+struct RenderCommand
+{
     V2i p;
-};
-
-struct SpriteChunk
-{
-    SpriteChunk *next;
-    uint32_t sprite_count;
-    SpriteToDraw sprites[512];
-};
-
-struct DirtyRects
-{
-    int glyphs_per_row, glyphs_per_col;
-    int rect_count_x, rect_count_y, rect_count;
-    int rect_w, rect_h;
-    uint64_t *rect_hashes;
-};
-
-struct SpriteLayer
-{
-    Font *font;
-    SpriteChunk *first_sprite_chunk;
-    DirtyRects rects;
-    DirtyRects prev_rects;
+    Sprite sprite;
 };
 
 struct RenderState
@@ -168,13 +150,18 @@ struct RenderState
 
     Font *world_font;
     Font *ui_font;
+    Font *fonts[Layer_COUNT];
 
     V2i ui_top_right;
     V2i camera_bottom_left;
 
     Glyph wall_segment_lookup[Wall_MAXVALUE + 1];
 
-    SpriteLayer layers[Draw_COUNT];
+    RenderCommand null_command;
+    uint32_t cb_size;
+    uint32_t cb_command_at;
+    uint32_t cb_sort_key_at;
+    char *command_buffer;
 };
 
 GLOBAL_STATE(RenderState, render_state);

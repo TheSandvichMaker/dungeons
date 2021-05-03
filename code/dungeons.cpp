@@ -90,44 +90,10 @@ AppUpdateAndRender(Platform *platform_)
         game_state->tileset    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("tileset.bmp"), 16, 16);
         game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font16x16_alt1.bmp"), 16, 16);
         game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font8x16.bmp"), 8, 16);
-        InitializeRenderState(&platform->backbuffer, &game_state->world_font, &game_state->ui_font);
+        InitializeRenderState(&game_state->transient_arena, &platform->backbuffer, &game_state->world_font, &game_state->ui_font);
         InitializeInputBindings();
 
-#if 0
-        AddRoom(MakeRect2iMinDim(1, 1, 16, 16));
-
-        Entity *martins = AddEntity(StringLiteral("Martins"), MakeV2i(4, 4), MakeSprite(Glyph_Dwarf1));
-        SetProperty(martins, EntityProperty_Martins|EntityProperty_Invulnerable|EntityProperty_Blocking);
-        martins->speed = 150;
-
-        AddPlayer(MakeV2i(5, 6));
-
-        RandomSeries entropy = MakeRandomSeries(0);
-        for (size_t i = 0; i < 15; ++i)
-        {
-            for (size_t attempt = 0; attempt < 100; ++attempt)
-            {
-                V2i spawn_p = MakeV2i(RandomRange(&entropy, 2, 16),
-                                      RandomRange(&entropy, 2, 16));
-                if (!TileBlocked(spawn_p))
-                {
-                    Entity *c = AddEntity(StringLiteral("Nugget of C"), spawn_p, MakeSprite('c'));
-                    SetProperty(c, EntityProperty_C|EntityProperty_Item);
-                    if (0 == RandomChance(&entropy, 4))
-                    {
-                        c->name = StringLiteral("Nugget of C++");
-                        c->sprite_anim_rate = 0.25f;
-                        c->sprite_anim_pause_time = 1.0f;
-                        c->sprites[c->sprite_count++] = MakeSprite('c');
-                        c->sprites[c->sprite_count++] = MakeSprite('+', MakeColor(255, 0, 0));
-                        c->sprites[c->sprite_count++] = MakeSprite('+', MakeColor(0, 255, 0));
-                    }
-                    break;
-                }
-            }
-        }
-#else
-#endif
+        game_state->gen_tiles = BeginGenerateWorld(0xDEADBEFC);
 
         platform->app_initialized = true;
     }
@@ -136,10 +102,6 @@ AppUpdateAndRender(Platform *platform_)
 
     if (!game_state->world_generated)
     {
-        if (!game_state->gen_tiles && Pressed(input->alt_interact))
-        {
-            game_state->gen_tiles = BeginGenerateWorld(0xDEADBEFC);
-        }
         game_state->world_generated = EndGenerateWorld(&game_state->gen_tiles);
     }
 
@@ -147,40 +109,12 @@ AppUpdateAndRender(Platform *platform_)
 
     if (game_state->world_generated)
     {
-        static bool erase = false;
-        if (Pressed(input->alt_interact))
-        {
-            if (TileBlocked(input->world_mouse_p))
-            {
-                erase = true;
-            }
-            else
-            {
-                erase = false;
-            }
-        }
-
-        if (input->alt_interact.ended_down)
-        {
-            EntityIter it = GetEntitiesAt(input->world_mouse_p);
-            if (erase && IsValid(it))
-            {
-                for (; IsValid(it); Next(&it))
-                {
-                    KillEntity(it.entity);
-                }
-            }
-            else
-            {
-                AddWall(input->world_mouse_p);
-            }
-        }
-
         UpdateAndRenderEntities();
 
         Entity *player = entity_manager->player;
-#if 1
-        DrawRect(Draw_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13), COLOR_WHITE, COLOR_BLACK);
+
+        PushRect(Layer_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13), COLOR_WHITE, COLOR_BLACK);
+
         if (player)
         {
             render_state->camera_bottom_left = player->p - MakeV2i(42, 20);
@@ -190,7 +124,7 @@ AppUpdateAndRender(Platform *platform_)
                  item;
                  item = item->next_in_inventory)
             {
-                DrawText(Draw_Ui, at_p,
+                PushText(Layer_Ui, at_p,
                          FormatTempString("Item: %.*s", StringExpand(item->name)),
                          COLOR_WHITE, COLOR_BLACK);
                 at_p.y -= 1;
@@ -202,59 +136,10 @@ AppUpdateAndRender(Platform *platform_)
              line;
              line = platform->GetNextLogLine(line))
         {
-            DrawText(Draw_Ui, at_p, line->string, COLOR_WHITE, COLOR_BLACK);
+            PushText(Layer_Ui, at_p, line->string, COLOR_WHITE, COLOR_BLACK);
             at_p.y -= 1;
         }
-#endif
     }
-#if 0
-    else if (game_state->gen_tiles)
-    {
-        GenTiles *tiles = game_state->gen_tiles;
-
-        int scale = 16;
-        for (int y = 0; y < tiles->h; ++y)
-        for (int x = 0; x < tiles->w; ++x)
-        {
-            V2i p = MakeV2i(x, y);
-            GenTile tile = GetTile(tiles, p);
-
-            p *= scale;
-
-            Glyph glyph = 0;
-            Color color = COLOR_BLACK;
-
-            switch (tile)
-            {
-                case GenTile_Wall:
-                {
-                    color = COLOR_WHITE;
-                    glyph = '#';
-                } break;
-
-                case GenTile_Room:
-                {
-                    float perlin = OctavePerlinNoise(0.01f*(float)p.x, 0.01f*(float)p.y, 6, 0.65f);
-                    color = LinearToSRGB(Lerp(MakeV3(0.0f, 1.0f, 0.0f), MakeV3(1.0f, 0.0f, 0.0f), perlin));
-                    glyph = ':';
-                } break;
-
-                case GenTile_Door:
-                {
-                    color = MakeColor(255, 127, 0);
-                    glyph = '$';
-                } break;
-
-                default:
-                {
-                    /* ... */
-                } break;
-            }
-
-            BlitCharMask(render_state->target, &game_state->world_font, p, glyph, color, COLOR_BLACK);
-        }
-    }
-#endif
 
     EndRender();
 }

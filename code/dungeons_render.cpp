@@ -1,5 +1,5 @@
 static inline void
-InitializeRenderState(Bitmap *target, Font *world_font, Font *ui_font)
+InitializeRenderState(Arena *arena, Bitmap *target, Font *world_font, Font *ui_font)
 {
     render_state->target     = target;
     render_state->world_font = world_font;
@@ -7,14 +7,19 @@ InitializeRenderState(Bitmap *target, Font *world_font, Font *ui_font)
     if (((world_font->glyph_w % ui_font->glyph_w) != 0) ||
         ((world_font->glyph_h % ui_font->glyph_h) != 0))
     {
-        platform->ReportError(PlatformError_Nonfatal, "Bad font metrics! The UI font does not evenly fit into the World font (world: %dx%d versus ui: %dx%d)", world_font->glyph_w, world_font->glyph_h, ui_font->glyph_w, ui_font->glyph_h);
+        platform->ReportError(PlatformError_Nonfatal, "Bad font metrics! The UI font does not evenly fit into the World font (world: %dx%d versus ui: %dx%d)",
+                              world_font->glyph_w, world_font->glyph_h, ui_font->glyph_w, ui_font->glyph_h);
     }
 
     if ((world_font->glyph_w < ui_font->glyph_w) ||
         (world_font->glyph_h < ui_font->glyph_h))
     {
-        platform->ReportError(PlatformError_Nonfatal, "Bad font metrics! The UI font is bigger than the World font (world: %dx%d versus ui: %dx%d)", world_font->glyph_w, world_font->glyph_h, ui_font->glyph_w, ui_font->glyph_h);
+        platform->ReportError(PlatformError_Nonfatal, "Bad font metrics! The UI font is bigger than the World font (world: %dx%d versus ui: %dx%d)",
+                              world_font->glyph_w, world_font->glyph_h, ui_font->glyph_w, ui_font->glyph_h);
     }
+
+    render_state->cb_size = Megabytes(4); // random choice
+    render_state->command_buffer = PushArrayNoClear(arena, render_state->cb_size, char);
 
     render_state->wall_segment_lookup[Wall_Top|Wall_Bottom]                                          = 179;
     render_state->wall_segment_lookup[Wall_Top|Wall_Bottom|Wall_Left]                                = 180;
@@ -59,6 +64,12 @@ InitializeRenderState(Bitmap *target, Font *world_font, Font *ui_font)
 
     render_state->ui_top_right = MakeV2i(platform->render_w, platform->render_h) / MakeV2i(render_state->ui_font->glyph_w,
                                                                                            render_state->ui_font->glyph_h);
+}
+
+static inline V2i
+GlyphDim(Font *font)
+{
+    return MakeV2i(font->glyph_w, font->glyph_h);
 }
 
 static inline Bitmap
@@ -231,63 +242,43 @@ BlitCharMask(Bitmap *dest, Font *font, V2i p, Glyph glyph, Color foreground, Col
     }
 }
 
-static inline SpriteChunk *
-GetAvailableSpriteChunk(SpriteLayer *layer)
+static inline RenderCommand *
+PushRenderCommand(RenderLayer layer, V2i p, Sprite sprite)
 {
-    if (!layer->first_sprite_chunk ||
-        (layer->first_sprite_chunk->sprite_count >= ArrayCount(layer->first_sprite_chunk->sprites)))
+    RenderCommand *command = &render_state->null_command;
+
+    size_t size_required = sizeof(RenderCommand) + sizeof(RenderSortKey);
+    size_t size_left     = render_state->cb_sort_key_at - render_state->cb_command_at;
+
+    if (size_left >= size_required)
     {
-        SpriteChunk *new_sprite_chunk = PushStruct(render_state->arena, SpriteChunk);
-        new_sprite_chunk->next = layer->first_sprite_chunk;
-        layer->first_sprite_chunk = new_sprite_chunk;
+        render_state->cb_sort_key_at -= sizeof(RenderSortKey);
+        RenderSortKey *sort_key = (RenderSortKey *)(render_state->command_buffer + render_state->cb_sort_key_at);
+
+        uint32_t offset = render_state->cb_command_at;
+        command = (RenderCommand *)(render_state->command_buffer + offset);
+        render_state->cb_command_at += sizeof(RenderCommand);
+
+        sort_key->offset = offset;
+        sort_key->layer  = layer;
+
+        command->p = p;
+        command->sprite = sprite;
     }
 
-    return layer->first_sprite_chunk;
-}
-
-static inline SpriteLayer *
-GetSpriteLayer(DrawMode mode)
-{
-    Assert(mode != Draw_None);
-    return &render_state->layers[mode];
+    return command;
 }
 
 static inline void
-DrawTile(DrawMode mode, V2i tile_p, Sprite sprite)
+PushTile(RenderLayer layer, V2i tile_p, Sprite sprite)
 {
-    SpriteLayer *layer = GetSpriteLayer(mode);
+    V2i p = tile_p*GlyphDim(render_state->fonts[layer]);
 
-    SpriteChunk *chunk = GetAvailableSpriteChunk(layer);
-
-    SpriteToDraw *to_draw = &chunk->sprites[chunk->sprite_count++];
-    to_draw->p = tile_p;
-    to_draw->sprite = sprite;
-
-    DirtyRects *rects = &layer->rects;
-    V2i rect_p = tile_p / MakeV2i(rects->glyphs_per_row, rects->glyphs_per_col);
-
-    if ((rect_p.x >= 0) &&
-        (rect_p.y >= 0) &&
-        (rect_p.x < rects->rect_count_x) &&
-        (rect_p.y < rects->rect_count_y))
-    {
-        if (mode == Draw_World)
-        {
-            to_draw->p -= render_state->camera_bottom_left;
-        }
-
-        uint64_t *hash = &rects->rect_hashes[rect_p.y*rects->rect_count_x + rect_p.x];
-        *hash = HashData(*hash, sizeof(*to_draw), to_draw);
-
-        if (mode == Draw_World)
-        {
-            to_draw->p += render_state->camera_bottom_left;
-        }
-    }
+    PushRenderCommand(layer, p, sprite);
 }
 
 static inline void
-DrawText(DrawMode mode, V2i p, String text, Color foreground, Color background)
+PushText(RenderLayer layer, V2i p, String text, Color foreground, Color background)
 {
     V2i at = p;
 
@@ -298,13 +289,13 @@ DrawText(DrawMode mode, V2i p, String text, Color foreground, Color background)
     for (size_t i = 0; i < text.size; ++i)
     {
         sprite.glyph = text.data[i];
-        DrawTile(mode, at, sprite);
+        PushTile(layer, at, sprite);
         at.x += 1;
     }
 }
 
 static inline void
-DrawRect(DrawMode mode, const Rect2i &rect, Color foreground, Color background)
+PushRect(RenderLayer layer, const Rect2i &rect, Color foreground, Color background)
 {
     uint32_t left   = Wall_Left;
     uint32_t right  = Wall_Right;
@@ -323,21 +314,21 @@ DrawRect(DrawMode mode, const Rect2i &rect, Color foreground, Color background)
     }
 #endif
 
-    DrawTile(mode, rect.min, MakeWall(right|top, foreground, background));
-    DrawTile(mode, MakeV2i(rect.max.x - 1, rect.min.y), MakeWall(left|top, foreground, background));
-    DrawTile(mode, rect.max - MakeV2i(1, 1), MakeWall(left|bottom, foreground, background));
-    DrawTile(mode, MakeV2i(rect.min.x, rect.max.y - 1), MakeWall(right|bottom, foreground, background));
+    PushTile(layer, rect.min, MakeWall(right|top, foreground, background));
+    PushTile(layer, MakeV2i(rect.max.x - 1, rect.min.y), MakeWall(left|top, foreground, background));
+    PushTile(layer, rect.max - MakeV2i(1, 1), MakeWall(left|bottom, foreground, background));
+    PushTile(layer, MakeV2i(rect.min.x, rect.max.y - 1), MakeWall(right|bottom, foreground, background));
 
     for (int32_t x = rect.min.x + 1; x < rect.max.x - 1; ++x)
     {
-        DrawTile(mode, MakeV2i(x, rect.min.y), MakeWall(left|right, foreground, background));
-        DrawTile(mode, MakeV2i(x, rect.max.y - 1), MakeWall(left|right, foreground, background));
+        PushTile(layer, MakeV2i(x, rect.min.y), MakeWall(left|right, foreground, background));
+        PushTile(layer, MakeV2i(x, rect.max.y - 1), MakeWall(left|right, foreground, background));
     }
 
     for (int32_t y = rect.min.y + 1; y < rect.max.y - 1; ++y)
     {
-        DrawTile(mode, MakeV2i(rect.min.x, y), MakeWall(top|bottom, foreground, background));
-        DrawTile(mode, MakeV2i(rect.max.x - 1, y), MakeWall(top|bottom, foreground, background));
+        PushTile(layer, MakeV2i(rect.min.x, y), MakeWall(top|bottom, foreground, background));
+        PushTile(layer, MakeV2i(rect.max.x - 1, y), MakeWall(top|bottom, foreground, background));
     }
 }
 
@@ -347,40 +338,17 @@ BeginRender(void)
     Arena *arena = GetTempArena();
     render_state->arena = arena;
 
-    Bitmap *target = render_state->target;
+    render_state->fonts[Layer_World] = render_state->world_font;
+    render_state->fonts[Layer_Ui] = render_state->ui_font;
 
-    render_state->layers[Draw_World].font = render_state->world_font;
-    render_state->layers[Draw_Ui].font = render_state->ui_font;
-
-    for (size_t i = 1; i < Draw_COUNT; ++i)
-    {
-        SpriteLayer *layer = GetSpriteLayer((DrawMode)i);
-        layer->first_sprite_chunk = nullptr;
-
-        Font *font = layer->font;
-
-        int total_glyphs_per_row = target->w / font->glyph_w;
-        int total_glyphs_per_col = target->h / font->glyph_h;
-
-        DirtyRects *rects = &layer->rects;
-        rects->rect_count_x = RECT_HASH_COUNT_X;
-        rects->rect_count_y = RECT_HASH_COUNT_Y;
-        rects->rect_count = rects->rect_count_x*rects->rect_count_y;
-
-        rects->glyphs_per_row = (total_glyphs_per_row + rects->rect_count_x - 1) / rects->rect_count_x;
-        rects->glyphs_per_col = (total_glyphs_per_col + rects->rect_count_y - 1) / rects->rect_count_y;
-
-        rects->rect_w = rects->glyphs_per_row*font->glyph_w;
-        rects->rect_h = rects->glyphs_per_col*font->glyph_h;
-        rects->rect_hashes = PushArray(arena, rects->rect_count, uint64_t);
-    }
+    render_state->cb_command_at = 0;
+    render_state->cb_sort_key_at = render_state->cb_size;
 }
 
 struct TiledRenderJobParams
 {
-    SpriteLayer *layer;
     Rect2i clip_rect;
-    DrawMode mode;
+    Bitmap *target;
 };
 
 static
@@ -388,116 +356,121 @@ PLATFORM_JOB(TiledRenderJob)
 {
     TiledRenderJobParams *params = (TiledRenderJobParams *)args;
 
-    SpriteLayer *layer = params->layer;
-    Font *font = layer->font;
-
     Rect2i clip_rect = params->clip_rect;
-    DrawMode mode = params->mode;
 
-    Bitmap target = MakeBitmapView(render_state->target, clip_rect);
+    Bitmap target = MakeBitmapView(params->target, clip_rect);
     ClearBitmap(&target, COLOR_BLACK);
 
-    for (SpriteChunk *chunk = layer->first_sprite_chunk;
-         chunk;
-         chunk = chunk->next)
+    char *command_buffer = render_state->command_buffer;
+    RenderSortKey *sort_keys = (RenderSortKey *)(command_buffer + render_state->cb_sort_key_at);
+
+    RenderSortKey *end = (RenderSortKey *)(command_buffer + render_state->cb_size);
+    for (RenderSortKey *at = sort_keys; at < end; at += 1)
     {
-        for (size_t i = 0; i < chunk->sprite_count; ++i)
+        RenderCommand *command = (RenderCommand *)(command_buffer + at->offset);
+        Font *font = render_state->fonts[at->layer];
+
+        V2i p = MakeV2i(command->p.x, command->p.y);
+        Sprite *sprite = &command->sprite;
+
+        if (at->layer == Layer_World)
         {
-            SpriteToDraw *to_draw = &chunk->sprites[i];
-            Sprite *sprite = &to_draw->sprite;
+            p -= GlyphDim(font)*render_state->camera_bottom_left;
+        }
 
-            V2i p = MakeV2i(to_draw->p.x, to_draw->p.y);
-            if (mode == Draw_World)
+        if (RectanglesOverlap(clip_rect, MakeRect2iMinDim(p, MakeV2i(font->glyph_w, font->glyph_h))))
+        {
+            p -= clip_rect.min;
+
+            Rect2i glyph_rect = GetGlyphRect(font, sprite->glyph);
+            Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, glyph_rect);
+            BlitBitmapMask(&target, &glyph_bitmap, p, sprite->foreground, sprite->background);
+        }
+    }
+}
+
+static inline void
+MergeSortInternal(uint32_t count, uint32_t *a, uint32_t *b)
+{
+    if (count <= 1)
+    {
+        // Nothing to do
+    }
+    else
+    {
+        uint32_t count_l = count / 2;
+        uint32_t count_r = count - count_l;
+        
+        MergeSortInternal(count_l, b, a);
+        MergeSortInternal(count_r, b + count_l, a + count_l);
+        
+        uint32_t *middle = b + count_l;
+        uint32_t *end    = b + count;
+        
+        uint32_t *l = b;
+        uint32_t *r = b + count_l;
+        
+        uint32_t *out = a;
+        for (size_t i = 0; i < count; ++i)
+        {
+            if ((l < middle) &&
+                ((r >= end) || (*l <= *r)))
             {
-                p -= render_state->camera_bottom_left;
+                *out++ = *l++;
             }
-            p *= MakeV2i(font->glyph_w, font->glyph_h);
-
-            if (RectanglesOverlap(clip_rect, MakeRect2iMinDim(p, MakeV2i(font->glyph_w, font->glyph_h))))
+            else
             {
-                p -= clip_rect.min;
-
-                Rect2i glyph_rect = GetGlyphRect(font, sprite->glyph);
-                Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, glyph_rect);
-                BlitBitmapMask(&target, &glyph_bitmap, p, sprite->foreground, sprite->background);
+                *out++ = *r++;
             }
         }
     }
 }
 
 static inline void
-RenderLayer(SpriteLayer *layer)
+MergeSort(uint32_t count, uint32_t *a, uint32_t *b)
 {
-    DirtyRects *rects = &layer->rects;
-    DirtyRects *prev_rects = &layer->prev_rects;
+    CopyArray(count, a, b);
+    MergeSortInternal(count, a, b);
+}
 
-    Bitmap *target = render_state->target;
+static inline void
+RenderCommandsToBitmap(Bitmap *target)
+{
     Rect2i target_bounds = MakeRect2iMinDim(0, 0, target->w, target->h);
 
-    int tile_count_x = rects->rect_count_x;
-    int tile_count_y = rects->rect_count_y;
+    uint32_t sort_key_count = (render_state->cb_size - render_state->cb_sort_key_at) / sizeof(RenderSortKey);
+    RenderSortKey *sort_keys = (RenderSortKey *)(render_state->command_buffer + render_state->cb_sort_key_at);
+    RenderSortKey *sort_scratch = PushArrayNoClear(render_state->arena, sort_key_count, RenderSortKey);
+    MergeSort(sort_key_count, (uint32_t *)sort_keys, (uint32_t *)sort_scratch);
+
+    int tile_count_x = 8;
+    int tile_count_y = 8;
     int tile_count = tile_count_x*tile_count_y;
     TiledRenderJobParams *tiles = PushArray(render_state->arena, tile_count, TiledRenderJobParams);
-    bool *tiles_redrawn = PushArray(render_state->arena, tile_count, bool);
 
-    int tile_w = rects->rect_w;
-    int tile_h = rects->rect_h;
+    int tile_w = (target->w + tile_count_x - 1) / tile_count_x;
+    int tile_h = (target->h + tile_count_y - 1) / tile_count_y;
 
     for (int tile_y = 0; tile_y < tile_count_y; ++tile_y)
     for (int tile_x = 0; tile_x < tile_count_x; ++tile_x)
     {
         int tile_index = tile_y*tile_count_x + tile_x;
-        if (prev_rects->rect_hashes)
-        {
-            uint64_t this_rect_hash = rects->rect_hashes[tile_index];
-            uint64_t prev_rect_hash = prev_rects->rect_hashes[tile_index];
-            if (this_rect_hash == prev_rect_hash)
-            {
-                // continue;
-            }
-        }
-
-        tiles_redrawn[tile_index] = true;
 
         TiledRenderJobParams *params = &tiles[tile_index];
-        params->layer = layer;
+        params->target = target;
 
         Rect2i clip_rect = MakeRect2iMinDim(tile_x*tile_w, tile_y*tile_h, tile_w, tile_h);
         clip_rect = Intersect(clip_rect, target_bounds); 
-
         params->clip_rect = clip_rect;
-
-        if (layer == GetSpriteLayer(Draw_World))
-        {
-            params->mode = Draw_World;
-        }
 
         platform->AddJob(platform->high_priority_queue, params, TiledRenderJob);
     }
 
     platform->WaitForJobs(platform->high_priority_queue);
-
-    Swap(layer->rects, layer->prev_rects);
 }
 
 static void
 EndRender(void)
 {
-    SpriteLayer *layer = GetSpriteLayer(Draw_World);
-    RenderLayer(layer);
-#if 0
-    SpriteLayer *layer = GetSpriteLayer(Draw_World);
-    for (SpriteChunk *chunk = layer->first_sprite_chunk;
-         chunk;
-         chunk = chunk->next)
-    {
-        for (size_t i = 0; i < chunk->sprite_count; ++i)
-        {
-            SpriteToDraw *to_draw = &chunk->sprites[i];
-            V2i p = to_draw->p;
-
-            BlitRect(render_state->target, MakeRect2iMinDim(2*p, MakeV2i(2, 2)), COLOR_WHITE);
-        }
-    }
-#endif
+    RenderCommandsToBitmap(render_state->target);
 }
