@@ -17,12 +17,14 @@ enum EntityPropertyKind
 {
     EntityProperty_None,
     EntityProperty_Alive,
+    EntityProperty_InWorld,
     EntityProperty_Dying,
     EntityProperty_Blocking,
     EntityProperty_PlayerControlled,
     EntityProperty_Invulnerable,
     EntityProperty_Door,
     EntityProperty_Item,
+    EntityProperty_Container,
     EntityProperty_Martins,
     EntityProperty_C,
     EntityProperty_AngryDude,
@@ -71,6 +73,9 @@ struct Entity
 
     String name;
 
+    bool open;
+    int32_t amount;
+
     V2i p;
     int32_t health;
 
@@ -115,6 +120,8 @@ struct EntityManager
     uint32_t entity_count;
 
     Entity *player;
+    Entity *looking_at_container;
+    int container_selection_index;
 
     Entity entities[MAX_ENTITY_COUNT];
     Entity *entity_grid[WORLD_SIZE_X][WORLD_SIZE_Y];

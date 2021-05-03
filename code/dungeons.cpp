@@ -113,7 +113,7 @@ AppUpdateAndRender(Platform *platform_)
 
         Entity *player = entity_manager->player;
 
-        PushRect(Layer_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13), COLOR_WHITE, COLOR_BLACK);
+        PushRectOutline(Layer_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13), COLOR_WHITE, COLOR_BLACK);
 
         Bitmap *target = render_state->target;
         Font *world_font = render_state->world_font;
@@ -124,7 +124,7 @@ AppUpdateAndRender(Platform *platform_)
         for (int y = viewport.min.y; y < viewport.max.y; y += 1)
         for (int x = viewport.min.x; x < viewport.max.x; x += 1)
         {
-            float perlin = OctavePerlinNoise(0.01f*(float)x, 0.01f*(float)y, 6, 0.65f);
+            float perlin = OctavePerlinNoise(0.01f*(float)x, 0.01f*(float)y, 6, 0.75f);
             perlin = (perlin > 0.5f ? 1.0f : 0.0f);
             Color foreground = LinearToSRGB(Lerp(MakeV3(0.25f, 0.15f, 0.0f), MakeV3(0.1f, 0.25f, 0.1f), perlin));
             PushTile(Layer_Floor, MakeV2i(x, y), MakeSprite(':', foreground));

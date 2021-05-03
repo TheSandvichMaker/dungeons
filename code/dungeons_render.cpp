@@ -243,7 +243,7 @@ BlitCharMask(Bitmap *dest, Font *font, V2i p, Glyph glyph, Color foreground, Col
 }
 
 static inline RenderCommand *
-PushRenderCommand(RenderLayer layer, V2i p, Sprite sprite)
+PushRenderCommand(RenderLayer layer, RenderCommandKind kind)
 {
     RenderCommand *command = &render_state->null_command;
 
@@ -259,25 +259,31 @@ PushRenderCommand(RenderLayer layer, V2i p, Sprite sprite)
         command = (RenderCommand *)(render_state->command_buffer + offset);
         render_state->cb_command_at += sizeof(RenderCommand);
 
+        command->kind = kind;
+
         sort_key->offset = offset;
         sort_key->layer  = layer;
-
-        command->p = p;
-        command->sprite = sprite;
-
-        render_state->command_buffer_hash = HashData(render_state->command_buffer_hash, sizeof(*sort_key), sort_key);
-        render_state->command_buffer_hash = HashData(render_state->command_buffer_hash, sizeof(*command), command);
     }
 
     return command;
 }
 
 static inline void
+EndPushRenderCommand(RenderCommand *command)
+{
+    if (command != &render_state->null_command)
+    {
+        // render_state->command_buffer_hash = HashData(render_state->command_buffer_hash, sizeof(*sort_key), sort_key);
+        // render_state->command_buffer_hash = HashData(render_state->command_buffer_hash, sizeof(*command), command);
+    }
+}
+
+static inline void
 PushTile(RenderLayer layer, V2i tile_p, Sprite sprite)
 {
-    V2i p = tile_p*GlyphDim(render_state->fonts[layer]);
-
-    PushRenderCommand(layer, p, sprite);
+    RenderCommand *command = PushRenderCommand(layer, RenderCommand_Sprite);
+    command->p = tile_p;
+    command->sprite = sprite;
 }
 
 static inline void
@@ -298,7 +304,15 @@ PushText(RenderLayer layer, V2i p, String text, Color foreground, Color backgrou
 }
 
 static inline void
-PushRect(RenderLayer layer, const Rect2i &rect, Color foreground, Color background)
+PushRect(RenderLayer layer, const Rect2i &rect, Color color)
+{
+    RenderCommand *command = PushRenderCommand(layer, RenderCommand_Rect);
+    command->rect = rect;
+    command->color = color;
+}
+
+static inline void
+PushRectOutline(RenderLayer layer, const Rect2i &rect, Color foreground, Color background)
 {
     uint32_t left   = Wall_Left;
     uint32_t right  = Wall_Right;
@@ -316,6 +330,8 @@ PushRect(RenderLayer layer, const Rect2i &rect, Color foreground, Color backgrou
         bottom = Wall_BottomThick;
     }
 #endif
+
+    PushRect(layer, MakeRect2iMinDim(rect.min + MakeV2i(1, 1), rect.max - MakeV2i(3, 3)), background);
 
     PushTile(layer, rect.min, MakeWall(right|top, foreground, background));
     PushTile(layer, MakeV2i(rect.max.x - 1, rect.min.y), MakeWall(left|top, foreground, background));
@@ -376,22 +392,57 @@ PLATFORM_JOB(TiledRenderJob)
     {
         RenderCommand *command = (RenderCommand *)(command_buffer + at->offset);
         Font *font = render_state->fonts[at->layer];
+        V2i glyph_dim = GlyphDim(font);
 
-        V2i p = MakeV2i(command->p.x, command->p.y);
-        Sprite *sprite = &command->sprite;
-
-        if (at->layer == Layer_World || at->layer == Layer_Floor)
+        switch (command->kind)
         {
-            p -= GlyphDim(font)*render_state->camera_bottom_left;
-        }
+            case RenderCommand_Sprite:
+            {
+                V2i p = MakeV2i(command->p.x, command->p.y);
+                Sprite *sprite = &command->sprite;
 
-        if (RectanglesOverlap(clip_rect, MakeRect2iMinDim(p, MakeV2i(font->glyph_w, font->glyph_h))))
-        {
-            p -= clip_rect.min;
+                if (sprite->glyph == '@')
+                {
+                    int y = 0; (void)y;
+                }
 
-            Rect2i glyph_rect = GetGlyphRect(font, sprite->glyph);
-            Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, glyph_rect);
-            BlitBitmapMask(&target, &glyph_bitmap, p, sprite->foreground, sprite->background);
+                if (at->layer == Layer_World || at->layer == Layer_Floor)
+                {
+                    p -= render_state->camera_bottom_left;
+                }
+
+                p *= glyph_dim;
+                if (RectanglesOverlap(clip_rect, MakeRect2iMinDim(p, MakeV2i(font->glyph_w, font->glyph_h))))
+                {
+                    p -= clip_rect.min;
+
+                    Rect2i glyph_rect = GetGlyphRect(font, sprite->glyph);
+                    Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, glyph_rect);
+                    BlitBitmapMask(&target, &glyph_bitmap, p, sprite->foreground, sprite->background);
+                }
+            } break;
+
+            case RenderCommand_Rect:
+            {
+                Rect2i rect = command->rect;
+
+                if (at->layer == Layer_World || at->layer == Layer_Floor)
+                {
+                    rect.min -= render_state->camera_bottom_left;
+                    rect.max -= render_state->camera_bottom_left;
+                }
+
+                rect.min *= glyph_dim;
+                rect.max *= glyph_dim;
+
+                // if (RectanglesOverlap(clip_rect, rect))
+                {
+                    rect.min -= clip_rect.min;
+                    rect.max -= clip_rect.min;
+
+                    BlitRect(&target, rect, command->color);
+                }
+            } break;
         }
     }
 }
@@ -441,6 +492,43 @@ MergeSort(uint32_t count, uint32_t *a, uint32_t *b)
 }
 
 static inline void
+RadixSort(uint32_t count, uint32_t *data, uint32_t *temp)
+{
+    uint32_t *source = data;
+    uint32_t *dest = temp;
+
+    for (int byte_index = 0; byte_index < 4; ++byte_index)
+    {
+        uint32_t offsets[256] = {};
+
+        // NOTE: First pass - count how many of each key
+        for (size_t i = 0; i < count; ++i)
+        {
+            uint32_t radix_piece = (source[i] >> 8*byte_index) & 0xFF;
+            offsets[radix_piece] += 1;
+        }
+
+        // NOTE: Change counts to offsets
+        uint32_t total = 0;
+        for (size_t i = 0; i < ArrayCount(offsets); ++i)
+        {
+            uint32_t piece_count = offsets[i];
+            offsets[i] = total;
+            total += piece_count;
+        }
+
+        // NOTE: Second pass - place elements into dest in order
+        for (size_t i = 0; i < count; ++i)
+        {
+            uint32_t radix_piece = (source[i] >> 8*byte_index) & 0xFF;
+            dest[offsets[radix_piece]++] = source[i];
+        }
+
+        Swap(dest, source);
+    }
+}
+
+static inline void
 RenderCommandsToBitmap(Bitmap *target)
 {
     Rect2i target_bounds = MakeRect2iMinDim(0, 0, target->w, target->h);
@@ -448,7 +536,7 @@ RenderCommandsToBitmap(Bitmap *target)
     uint32_t sort_key_count = (render_state->cb_size - render_state->cb_sort_key_at) / sizeof(RenderSortKey);
     RenderSortKey *sort_keys = (RenderSortKey *)(render_state->command_buffer + render_state->cb_sort_key_at);
     RenderSortKey *sort_scratch = PushArrayNoClear(render_state->arena, sort_key_count, RenderSortKey);
-    MergeSort(sort_key_count, (uint32_t *)sort_keys, (uint32_t *)sort_scratch);
+    RadixSort(sort_key_count, &sort_keys->u32, &sort_scratch->u32);
 
     int tile_count_x = 8;
     int tile_count_y = 8;
@@ -479,7 +567,7 @@ RenderCommandsToBitmap(Bitmap *target)
 static void
 EndRender(void)
 {
-    if (render_state->command_buffer_hash != render_state->prev_command_buffer_hash)
+    // if (render_state->command_buffer_hash != render_state->prev_command_buffer_hash)
     {
         RenderCommandsToBitmap(render_state->target);
     }

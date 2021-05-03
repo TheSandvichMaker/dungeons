@@ -92,6 +92,7 @@ AddEntity(String name, V2i p, Sprite sprite, EntityPropertySet initial_propertie
 
         SetProperties(result, initial_properties);
         SetProperty(result, EntityProperty_Alive);
+        SetProperty(result, EntityProperty_InWorld);
 
         result->handle = { (uint32_t)(result - entity_manager->entities), gen };
         result->name = name;
@@ -99,6 +100,7 @@ AddEntity(String name, V2i p, Sprite sprite, EntityPropertySet initial_propertie
         result->health = 2;
         result->sprites[result->sprite_count++] = sprite;
         result->speed = 100;
+        result->amount = 1;
 
         MoveEntity(result, p);
     }
@@ -125,12 +127,34 @@ AddDoor(V2i p)
 static inline Entity *
 AddPlayer(V2i p)
 {
-    Entity *e = AddEntity(StringLiteral("Player"), p, MakeSprite(Glyph_Dwarf2, MakeColor(255, 255, 0)));
+    Entity *e = AddEntity(StringLiteral("Player"), p, MakeSprite('@', MakeColor(255, 255, 0)));
     SetProperties(e, EntityProperty_PlayerControlled|EntityProperty_Blocking);
 
     Assert(!entity_manager->player);
     entity_manager->player = e;
 
+    return e;
+}
+
+static inline Entity *
+AddGold(V2i p, int amount)
+{
+    Entity *e = AddEntity(StringLiteral("Gold"), p, MakeSprite('g', MakeColor(255, 255, 0)));
+    e->amount = amount;
+    e->sprite_anim_rate = 0.25f;
+    e->sprite_anim_pause_time = 1.75f;
+    e->sprites[e->sprite_count++] = MakeSprite('g', MakeColor(255, 255, 0));
+    e->sprites[e->sprite_count++] = MakeSprite('g', MakeColor(255, 255, 127));
+    e->sprites[e->sprite_count++] = MakeSprite('g', MakeColor(255, 255, 255));
+    SetProperty(e, EntityProperty_Item);
+    return e;
+}
+
+static inline Entity *
+AddChest(V2i p)
+{
+    Entity *e = AddEntity(StringLiteral("Chest"), p, MakeSprite('M', MakeColor(127, 255, 0)));
+    SetProperties(e, EntityProperty_Container|EntityProperty_Invulnerable|EntityProperty_Blocking);
     return e;
 }
 
@@ -508,10 +532,17 @@ static inline void
 AddToInventory(Entity *e, Entity *item)
 {
     RemoveEntityFromGrid(item);
-    UnsetProperty(item, EntityProperty_Alive);
+    UnsetProperty(item, EntityProperty_InWorld);
 
     item->next_in_inventory = e->first_in_inventory;
     e->first_in_inventory = item;
+}
+
+static inline void
+OpenDoor(Entity *e)
+{
+    e->open = true;
+    UnsetProperty(e, EntityProperty_Blocking);
 }
 
 static inline bool
@@ -529,6 +560,81 @@ PlayerAct(void)
         return false;
     }
 
+    if (Triggered(input->here))
+    {
+        entity_manager->looking_at_container = nullptr;
+    }
+
+    if (entity_manager->looking_at_container)
+    {
+        if (!entity_manager->looking_at_container->first_in_inventory)
+        {
+            entity_manager->looking_at_container = nullptr;
+        }
+    }
+
+    if (entity_manager->looking_at_container)
+    {
+        Entity *container = entity_manager->looking_at_container;
+
+        PushRectOutline(Layer_Ui, MakeRect2iMinDim(2, 2, 24, 16), COLOR_WHITE, COLOR_BLACK);
+
+        int item_count = 0;
+        for (Entity *item = container->first_in_inventory;
+             item;
+             item = item->next_in_inventory)
+        {
+            item_count += 1;
+        }
+
+        if (Triggered(input->north)) entity_manager->container_selection_index += 1;
+        if (Triggered(input->south)) entity_manager->container_selection_index -= 1;
+        entity_manager->container_selection_index %= item_count;
+
+        bool take_item = Triggered(input->east);
+        Entity *item_to_take = nullptr;
+
+        int item_index = 0;
+        V2i at_p = MakeV2i(5, 3);
+        for (Entity *item = container->first_in_inventory;
+             item;
+             item = item->next_in_inventory)
+        {
+            Color text_color = MakeColor(127, 127, 127);
+            if (item_index == entity_manager->container_selection_index)
+            {
+                text_color = COLOR_WHITE;
+                item_to_take = item;
+            }
+
+            PushTile(Layer_Ui, at_p - MakeV2i(1, 0), item->sprites[item->sprite_index]);
+            PushText(Layer_Ui, at_p,
+                     FormatTempString(" - %.*s", StringExpand(item->name)),
+                     text_color, COLOR_BLACK);
+            at_p.y += 1;
+            item_index += 1;
+        }
+
+        if (take_item)
+        {
+            for (Entity **item_at = &container->first_in_inventory;
+                 *item_at;
+                 item_at = &(*item_at)->next_in_inventory)
+            {
+                Entity *item = *item_at;
+                if (item == item_to_take)
+                {
+                    *item_at = item->next_in_inventory;
+                    item->next_in_inventory = nullptr;
+                    AddToInventory(player, item);
+                    break;
+                }
+            }
+        }
+
+        return false;
+    }
+
     V2i move = MakeV2i(0, 0);
     if (Triggered(input->north))     move += MakeV2i( 0,  1);
     if (Triggered(input->northeast)) move += MakeV2i( 1,  1);
@@ -543,18 +649,27 @@ PlayerAct(void)
     if (!AreEqual(move, MakeV2i(0, 0)))
     {
         V2i move_p = player->p + move;
+
+        entity_manager->looking_at_container = nullptr;
         
         bool blocked = false;
         for (EntityIter at_move_p = GetEntitiesAt(move_p); IsValid(at_move_p); Next(&at_move_p))
         {
             Entity *e = at_move_p.entity;
-            if (HasProperty(e, EntityProperty_Door))
+
+            if (HasProperty(e, EntityProperty_Container))
             {
-                DamageEntity(e, 999);
+                entity_manager->looking_at_container = e;
             }
-            else if (HasProperty(e, EntityProperty_Blocking))
+
+            if (HasProperty(e, EntityProperty_Blocking))
             {
-                if (HasProperty(e, EntityProperty_Invulnerable))
+                if (HasProperty(e, EntityProperty_Door))
+                {
+                    OpenDoor(e);
+                    return true;
+                }
+                else if (HasProperty(e, EntityProperty_Invulnerable))
                 {
                     // blocked with no recourse
                     blocked = true;
@@ -577,6 +692,11 @@ PlayerAct(void)
             MoveEntity(player, move_p);
             return true;
         }
+    }
+
+    if (Triggered(input->here))
+    {
+        return true;
     }
 
     return result;
@@ -658,6 +778,13 @@ UpdateAndRenderEntities(void)
         Entity *e = it.entity;
 
         Sprite sprite = e->sprites[e->sprite_index];
+        if (e->open)
+        {
+            sprite.foreground = MakeColor(sprite.foreground.r / 2,
+                                          sprite.foreground.g / 2,
+                                          sprite.foreground.b / 2);
+        }
+
         if (e->sprite_anim_timer >= e->sprite_anim_rate)
         {
             e->sprite_anim_timer -= e->sprite_anim_rate;
@@ -681,7 +808,10 @@ UpdateAndRenderEntities(void)
             KillEntity(e);
         }
 
-        PushTile(Layer_World, e->p, sprite);
+        if (HasProperty(e, EntityProperty_InWorld))
+        {
+            PushTile(Layer_World, e->p, sprite);
+        }
     }
 }
 

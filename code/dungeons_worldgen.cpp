@@ -425,6 +425,17 @@ PLATFORM_JOB(DoWorldGen)
     GenRoom *starting_room = &tiles->rooms[RandomChoice(&entropy, tiles->room_count)];
     V2i player_spawn_p = (starting_room->rect.min + starting_room->rect.max) / 2;
     AddPlayer(player_spawn_p);
+    
+    Entity *chest = AddChest(player_spawn_p + MakeV2i(2, 0));
+    AddToInventory(chest, AddGold({}, 420));
+    Entity *leet_gold = AddGold({}, 1337);
+    leet_gold->name = StringLiteral("L33T G0LD");
+    AddToInventory(chest, leet_gold);
+    Entity *angry_orc = AddGold({}, 1);
+    angry_orc->name = StringLiteral("Angry orc");
+    angry_orc->sprites[0] = MakeSprite('O', MakeColor(255, 0, 0));
+    angry_orc->sprite_count = 1;
+    AddToInventory(chest, angry_orc);
 
     tiles->complete = true;
 }

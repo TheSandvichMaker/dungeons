@@ -130,16 +130,31 @@ enum RenderLayer
     Layer_COUNT,
 };
 
-struct RenderSortKey
+enum RenderCommandKind
 {
-    uint32_t offset : 30;
-    uint32_t layer  : 2;
+    RenderCommand_Sprite,
+    RenderCommand_Rect,
+};
+
+union RenderSortKey
+{
+    struct
+    {
+        uint32_t offset : 30;
+        uint32_t layer  : 2;
+    };
+    uint32_t u32;
 };
 
 struct RenderCommand
 {
+    RenderCommandKind kind;
+
     V2i p;
     Sprite sprite;
+
+    Rect2i rect;
+    Color color;
 };
 
 struct RenderState
