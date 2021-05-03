@@ -200,11 +200,20 @@ struct Array
 };
 
 template <typename T>
+static inline void
+Push(Array<T> *array_init, T item)
+{
+    Array<T> &array = *array_init;
+    AssertSlow(array.count < array.capacity);
+    array[array.count++] = item;
+}
+
+template <typename T>
 static inline T
 RemoveOrdered(Array<T> *array_init, size_t remove_index)
 {
     Array<T> &array = *array_init;
-    Assert(remove_index < array.count);
+    AssertSlow(remove_index < array.count);
 
     T result = array[remove_index];
 

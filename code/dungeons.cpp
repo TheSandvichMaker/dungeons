@@ -10,6 +10,13 @@
 
 // Ryan's text controls example: https://hatebin.com/ovcwtpsfmj
 
+static inline void
+SetDebugDelay(int milliseconds, int frame_count)
+{
+    game_state->debug_delay = milliseconds;
+    game_state->debug_delay_frame_count = frame_count;
+}
+
 static Font
 MakeFont(Bitmap bitmap, int32_t glyph_w, int32_t glyph_h)
 {
@@ -73,6 +80,13 @@ AppUpdateAndRender(Platform *platform_)
 {
     platform = platform_;
 
+    {
+        double x = 9.352835;
+        double x_exp = exp(x);
+        double x_log = log(x_exp);
+        UNUSED_VARIABLE(x_log);
+    }
+
     game_state = (GameState *)platform->persistent_app_data;
     if (!platform->app_initialized)
     {
@@ -112,8 +126,10 @@ AppUpdateAndRender(Platform *platform_)
         UpdateAndRenderEntities();
 
         Entity *player = entity_manager->player;
-
-        PushRectOutline(Layer_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13), COLOR_WHITE, COLOR_BLACK);
+        if (player)
+        {
+            render_state->camera_bottom_left = player->p - MakeV2i(42, 20);
+        }
 
         Bitmap *target = render_state->target;
         Font *world_font = render_state->world_font;
@@ -155,18 +171,7 @@ AppUpdateAndRender(Platform *platform_)
 
         if (player)
         {
-            render_state->camera_bottom_left = player->p - MakeV2i(42, 20);
-
-            V2i at_p = MakeV2i(4, render_state->ui_top_right.y - 3);
-            for (Entity *item = player->first_in_inventory;
-                 item;
-                 item = item->next_in_inventory)
-            {
-                PushText(Layer_Ui, at_p,
-                         FormatTempString("Item: %.*s", StringExpand(item->name)),
-                         COLOR_WHITE, COLOR_BLACK);
-                at_p.y -= 1;
-            }
+            DrawEntityList(&player->inventory, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13));
         }
 
         V2i at_p = MakeV2i(40, render_state->ui_top_right.y - 3);
@@ -180,4 +185,15 @@ AppUpdateAndRender(Platform *platform_)
     }
 
     EndRender();
+
+    if (Pressed(input->interact))
+    {
+        PrintRenderCommandsUnderCursor();
+    }
+
+    if (game_state->debug_delay_frame_count > 0)
+    {
+        platform->SleepThread(game_state->debug_delay);
+        game_state->debug_delay_frame_count -= 1;
+    }
 }

@@ -60,6 +60,28 @@
 #define Gigabytes(x) (Megabytes(x)*1024ull)
 #define Terabytes(x) (Gigabytes(x)*1024ull)
 
+#define SllStackPush(h, n) ((n)->next = (h), (h) = (n))
+#define SllStackPop_(h) ((h) = (h)->next)
+#define SllStackPop(h) h; SllStackPop_(h)
+#define SllQueuePush(f, l, n) ((n)->next = 0, ((f) ? (l)->next = (n) : (f) = (n)), (l) = (n))
+#define SllQueuePop(f, l) f; (SllStackPop_(f), ((f) ? 0 : (l) = 0))
+
+#define ForSllUnique(it, head, next) for (auto* it = head; it; it = it->next)
+#define ForSll(it, head) ForSllUnique(it, head, next)
+#define ForSllOuterUnique(it_at, head, next) for (auto** it_at = &(head); *it_at; it_at = &(*it_at)->next)
+#define ForSllOuter(it_at, head) ForSllOuterUnique(it_at, head, next)
+
+#define DllInit(s) ((s)->next = s, (s)->prev = s)
+#define DllInsertFront(h, n) ((n)->next = (h)->next, (n)->prev = h, (n)->next->prev = n, (n)->prev->next = n)
+#define DllInsertBack(h, n) ((n)->next = h, (n)->prev = (h)->prev, (n)->next->prev = n, (n)->prev->next = n)
+#define DllRemove(n) ((n)->next->prev = (n)->prev, (n)->prev->next = (n)->next)
+#define DllIsEmpty(s) ((s)->next == (s))
+
+#define ForDllUnique(it, sentinel, next, prev) for (auto prev_##it = (sentinel), it = (sentinel)->next; \
+                                                    it != (sentinel);                                   \
+                                                    prev_##it = prev_##it->next, it = prev_##it->next)
+#define ForDll(it, sentinel) ForDllUnique(it, sentinel, next, prev)
+
 #include "dungeons_types.hpp"
 #include "dungeons_intrinsics.hpp"
 

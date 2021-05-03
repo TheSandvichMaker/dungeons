@@ -1,3 +1,30 @@
+static inline EntityNode *
+NewEntityNode(Entity *entity)
+{
+    EntityNode *result = nullptr;
+    if (entity)
+    {
+        if (!entity_manager->first_free_entity_handle_node)
+        {
+            entity_manager->first_free_entity_handle_node = PushStructNoClear(&entity_manager->arena, EntityNode);
+        }
+        result = SllStackPop(entity_manager->first_free_entity_handle_node);
+        result->next = nullptr;
+        result->handle = entity->handle;
+    }
+    else
+    {
+        INVALID_CODE_PATH;
+    }
+    return result;
+}
+
+static inline void
+FreeEntityNode(EntityNode *node)
+{
+    SllStackPush(entity_manager->first_free_entity_handle_node, node);
+}
+
 static inline bool
 IsInWorld(V2i p)
 {
@@ -8,7 +35,7 @@ IsInWorld(V2i p)
 }
 
 static inline Entity *
-GetEntity(EntityHandle handle)
+EntityFromHandle(EntityHandle handle)
 {
     Entity *slot = &entity_manager->entities[handle.index];
     if (slot->handle.generation == handle.generation)
@@ -16,6 +43,12 @@ GetEntity(EntityHandle handle)
         return slot;
     }
     return nullptr;
+}
+
+static inline EntityHandle
+HandleFromEntity(Entity *entity)
+{
+    return entity->handle;
 }
 
 static inline bool
@@ -70,13 +103,10 @@ static inline Entity *
 AddEntity(String name, V2i p, Sprite sprite, EntityPropertySet initial_properties = {})
 {
     Entity *result = nullptr;
-    for (size_t i = 0; i < entity_manager->entity_count; ++i)
+    if (entity_manager->first_free_entity)
     {
-        Entity *e = &entity_manager->entities[i];
-        if (!HasProperty(e, EntityProperty_Alive))
-        {
-            result = e;
-        }
+        result = entity_manager->first_free_entity;
+        entity_manager->first_free_entity = result->next_free;
     }
 
     if (!result && (entity_manager->entity_count < MAX_ENTITY_COUNT))
@@ -168,6 +198,8 @@ KillEntity(Entity *e)
         Assert(e == entity_manager->player);
         entity_manager->player = nullptr;
     }
+    e->next_free = entity_manager->first_free_entity;
+    entity_manager->first_free_entity = e;
 }
 
 struct EntityIter
@@ -528,14 +560,75 @@ FindPath(Arena *arena, V2i start, V2i target)
     return result;
 }
 
+static inline Array<Entity *>
+Linearize(EntityList *list)
+{
+    int count = 0;
+    for (EntityNode *node = list->first; node; node = node->next)
+    {
+        count += 1;
+    }
+
+    Array<Entity *> result = PushArrayContainer<Entity *>(GetTempArena(), count);
+
+    for (EntityNode *node = list->first; node; node = node->next)
+    {
+        Entity *e = EntityFromHandle(node->handle);
+        if (e)
+        {
+            Push(&result, e);
+        }
+    }
+
+    return result;
+}
+
+static inline Array<Entity *>
+Pull(EntityList *list)
+{
+    int count = 0;
+    for (EntityNode *node = list->first; node; node = node->next)
+    {
+        count += 1;
+    }
+
+    Array<Entity *> result = PushArrayContainer<Entity *>(GetTempArena(), count);
+
+    while (list->first)
+    {
+        EntityNode *node = SllQueuePop(list->first, list->last);
+
+        Entity *e = EntityFromHandle(node->handle);
+        if (e)
+        {
+            Push(&result, e);
+        }
+
+        FreeEntityNode(node);
+    }
+    list->first = list->last = nullptr;
+
+    return result;
+}
+
+static inline void
+Place(EntityList *list, Array<Entity *> array)
+{
+    for (size_t i = 0; i < array.count; ++i)
+    {
+        EntityNode *node = NewEntityNode(array[i]);
+        SllQueuePush(list->first, list->last, node);
+    }
+}
+
 static inline void
 AddToInventory(Entity *e, Entity *item)
 {
     RemoveEntityFromGrid(item);
     UnsetProperty(item, EntityProperty_InWorld);
 
-    item->next_in_inventory = e->first_in_inventory;
-    e->first_in_inventory = item;
+    EntityNode *node = NewEntityNode(item);
+    SllQueuePush(e->inventory.first, e->inventory.last, node);
 }
 
 static inline void
@@ -545,44 +638,60 @@ OpenDoor(Entity *e)
     UnsetProperty(e, EntityProperty_Blocking);
 }
 
-static inline Array<Entity *>
-PullInventory(Entity *e)
+static inline void
+InteractWithContainer(Entity *player, Entity *container)
 {
-    size_t count = 0;
-    for (Entity *item = e->first_in_inventory;
-         item;
-         item = item->next_in_inventory)
+    Array<Entity *> items = Pull(&container->inventory);
+
+    if (Triggered(input->north)) entity_manager->container_selection_index -= 1;
+    if (Triggered(input->south)) entity_manager->container_selection_index += 1;
+    entity_manager->container_selection_index %= items.count;
+
+    if (Triggered(input->east))
     {
-        count += 1;
+        Entity *taken_item = RemoveOrdered(&items, entity_manager->container_selection_index);
+        AddToInventory(player, taken_item);
     }
 
-    Array<Entity *> result = PushArrayContainer<Entity *>(GetTempArena(), count);
-    result.count = count;
-
-    size_t i = result.count;
-    while (e->first_in_inventory)
-    {
-        Entity *item = e->first_in_inventory;
-
-        e->first_in_inventory = item->next_in_inventory;
-        item->next_in_inventory = nullptr;
-
-        result[--i] = item;
-    }
-
-    e->first_in_inventory = nullptr;
-
-    return result;
+    Place(&container->inventory, items);
 }
 
 static inline void
-PlaceInventory(Entity *e, Array<Entity *> items)
+DrawEntityList(EntityList *list, Rect2i rect, int highlight_index = -1)
 {
+    Array<Entity *> items = Linearize(list);
+    rect.max.y = Min(rect.max.y, rect.min.y + (int)items.count + 2);
+    rect.max.y = Max(rect.min.y + 3, rect.max.y);
+
+    PushRectOutline(Layer_Ui, rect, COLOR_WHITE, COLOR_BLACK);
+
+    V2i at_p = MakeV2i(rect.min.x + 3, rect.max.y - 2);
+
+    int item_index = 0;
     for (size_t i = 0; i < items.count; ++i)
     {
         Entity *item = items[i];
-        item->next_in_inventory = e->first_in_inventory;
-        e->first_in_inventory = item;
+
+        Color text_color = MakeColor(127, 127, 127);
+        if (highlight_index == -1 || item_index == highlight_index)
+        {
+            text_color = COLOR_WHITE;
+        }
+
+        PushTile(Layer_Ui, at_p - MakeV2i(1, 0), item->sprites[item->sprite_index]);
+
+        String text = FormatTempString(" %4d %.*s ", item->amount, StringExpand(item->name));
+        PushText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
+
+        at_p.y -= 1;
+        item_index += 1;
+    }
+
+    if (!items.count)
+    {
+        Color text_color = MakeColor(127, 127, 127);
+        String text = FormatTempString("  Nothing here...");
+        PushText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
     }
 }
 
@@ -608,7 +717,7 @@ PlayerAct(void)
 
     if (entity_manager->looking_at_container)
     {
-        if (!entity_manager->looking_at_container->first_in_inventory)
+        if (!entity_manager->looking_at_container->inventory.first)
         {
             entity_manager->looking_at_container = nullptr;
         }
@@ -616,43 +725,7 @@ PlayerAct(void)
 
     if (entity_manager->looking_at_container)
     {
-        Entity *container = entity_manager->looking_at_container;
-
-        PushRectOutline(Layer_Ui, MakeRect2iMinDim(2, 2, 24, 16), COLOR_WHITE, COLOR_BLACK);
-
-        Array<Entity *> items = PullInventory(container);
-
-        if (Triggered(input->north)) entity_manager->container_selection_index -= 1;
-        if (Triggered(input->south)) entity_manager->container_selection_index += 1;
-        entity_manager->container_selection_index %= items.count;
-
-        if (Triggered(input->east))
-        {
-            Entity *taken_item = RemoveOrdered(&items, entity_manager->container_selection_index);
-            AddToInventory(player, taken_item);
-        }
-
-        V2i at_p = MakeV2i(5, 16);
-        for (size_t i = 0; i < items.count; ++i)
-        {
-            Entity *item = items[i];
-
-            Color text_color = MakeColor(127, 127, 127);
-            if (i == entity_manager->container_selection_index)
-            {
-                text_color = COLOR_WHITE;
-            }
-
-            PushTile(Layer_Ui, at_p - MakeV2i(1, 0), item->sprites[item->sprite_index]);
-
-            String text = FormatTempString(" %4d %.*s ", item->amount, StringExpand(item->name));
-            PushText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
-
-            at_p.y -= 1;
-        }
-
-        PlaceInventory(container, items);
-
+        InteractWithContainer(player, entity_manager->looking_at_container);
         return false;
     }
 
@@ -833,6 +906,12 @@ UpdateAndRenderEntities(void)
         {
             PushTile(Layer_World, e->p, sprite);
         }
+    }
+
+    if (entity_manager->looking_at_container)
+    {
+        Entity *container = entity_manager->looking_at_container;
+        DrawEntityList(&container->inventory, MakeRect2iMinDim(2, 2, 24, 16), entity_manager->container_selection_index);
     }
 }
 

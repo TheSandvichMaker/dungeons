@@ -62,14 +62,29 @@ NullEntityHandle(void)
     return result;
 }
 
+struct EntityNode
+{
+    EntityNode *next;
+    EntityHandle handle;
+};
+
+struct EntityList
+{
+    EntityNode *first;
+    EntityNode *last;
+};
+
 struct Entity
 {
     EntityHandle handle;
 
-    Entity *next_on_tile;
-    Entity *next_in_inventory;
+    union
+    {
+        Entity *next_on_tile;
+        Entity *next_free;
+    };
 
-    Entity *first_in_inventory;
+    EntityList inventory;
 
     String name;
 
@@ -95,12 +110,6 @@ struct Entity
     uint64_t properties[(EntityProperty_COUNT + 63) / 64];
 };
 
-struct EntityList
-{
-    size_t count;
-    Entity **entities;
-};
-
 enum ActionKind
 {
     Action_None,
@@ -118,7 +127,7 @@ struct Action
 
 struct EntityManager
 {
-    Arena *arena;
+    Arena arena;
 
     Arena turn_arena;
     float turn_timer;
@@ -129,10 +138,16 @@ struct EntityManager
     Entity *looking_at_container;
     int container_selection_index;
 
+    EntityNode *first_free_entity_handle_node;
+
+    Entity *first_free_entity;
     Entity entities[MAX_ENTITY_COUNT];
     Entity *entity_grid[WORLD_SIZE_X][WORLD_SIZE_Y];
 };
 GLOBAL_STATE(EntityManager, entity_manager);
+
+static inline EntityNode *NewEntityNode(Entity *entity);
+static inline void FreeEntityNode(EntityNode *node);
 
 static inline void
 SetProperty(Entity *e, EntityPropertyKind property)

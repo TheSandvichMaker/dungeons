@@ -31,7 +31,12 @@ struct GameState
 
     Font world_font;
     Font ui_font;
+
+    int debug_delay;
+    int debug_delay_frame_count;
 };
 static GameState *game_state;
+
+static inline void SetDebugDelay(int milliseconds, int frame_count);
 
 #endif /* DUNGEONS_HPP */

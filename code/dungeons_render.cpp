@@ -18,7 +18,7 @@ InitializeRenderState(Arena *arena, Bitmap *target, Font *world_font, Font *ui_f
                               world_font->glyph_w, world_font->glyph_h, ui_font->glyph_w, ui_font->glyph_h);
     }
 
-    render_state->cb_size = Megabytes(1); // random choice
+    render_state->cb_size = Megabytes(4); // random choice
     render_state->command_buffer = PushArrayNoClear(arena, render_state->cb_size, char);
 
     render_state->wall_segment_lookup[Wall_Top|Wall_Bottom]                                          = 179;
@@ -264,6 +264,10 @@ PushRenderCommand(RenderLayer layer, RenderCommandKind kind)
         sort_key->offset = offset;
         sort_key->layer  = layer;
     }
+    else
+    {
+        INVALID_CODE_PATH;
+    }
 
     return command;
 }
@@ -331,7 +335,7 @@ PushRectOutline(RenderLayer layer, const Rect2i &rect, Color foreground, Color b
     }
 #endif
 
-    PushRect(layer, MakeRect2iMinDim(rect.min + MakeV2i(1, 1), rect.max - MakeV2i(3, 3)), background);
+    PushRect(layer, MakeRect2iMinMax(rect.min + MakeV2i(1, 1), rect.max - MakeV2i(1, 1)), background);
 
     PushTile(layer, rect.min, MakeWall(right|top, foreground, background));
     PushTile(layer, MakeV2i(rect.max.x - 1, rect.min.y), MakeWall(left|top, foreground, background));
@@ -435,7 +439,7 @@ PLATFORM_JOB(TiledRenderJob)
                 rect.min *= glyph_dim;
                 rect.max *= glyph_dim;
 
-                // if (RectanglesOverlap(clip_rect, rect))
+                if (RectanglesOverlap(clip_rect, rect))
                 {
                     rect.min -= clip_rect.min;
                     rect.max -= clip_rect.min;
@@ -538,6 +542,13 @@ RenderCommandsToBitmap(Bitmap *target)
     RenderSortKey *sort_scratch = PushArrayNoClear(render_state->arena, sort_key_count, RenderSortKey);
     RadixSort(sort_key_count, &sort_keys->u32, &sort_scratch->u32);
 
+#if DUNGEONS_SLOW
+    for (size_t i = 1; i < sort_key_count; ++i)
+    {
+        Assert(sort_keys[i].u32 > sort_keys[i - 1].u32);
+    }
+#endif
+
     int tile_count_x = 8;
     int tile_count_y = 8;
     int tile_count = tile_count_x*tile_count_y;
@@ -570,5 +581,66 @@ EndRender(void)
     // if (render_state->command_buffer_hash != render_state->prev_command_buffer_hash)
     {
         RenderCommandsToBitmap(render_state->target);
+    }
+}
+
+static inline void
+PrintRenderCommandsUnderCursor(void)
+{
+    char *command_buffer = render_state->command_buffer;
+    RenderSortKey *sort_keys = (RenderSortKey *)(command_buffer + render_state->cb_sort_key_at);
+
+    RenderSortKey *end = (RenderSortKey *)(command_buffer + render_state->cb_size);
+    int index = 0;
+    for (RenderSortKey *at = sort_keys; at < end; at += 1)
+    {
+        RenderCommand *command = (RenderCommand *)(command_buffer + at->offset);
+
+        Font *font = render_state->fonts[at->layer];
+        V2i glyph_dim = GlyphDim(font);
+
+        char *type = "Huh";
+        Rect2i surface_area = {};
+        switch (command->kind)
+        {
+            case RenderCommand_Sprite:
+            {
+                type = "sprite";
+
+                V2i p = MakeV2i(command->p.x, command->p.y);
+
+                if (at->layer == Layer_World || at->layer == Layer_Floor)
+                {
+                    p -= render_state->camera_bottom_left;
+                }
+
+                p *= glyph_dim;
+                surface_area = MakeRect2iMinDim(p, glyph_dim);
+            } break;
+
+            case RenderCommand_Rect:
+            {
+                type = "rect";
+
+                Rect2i rect = command->rect;
+
+                if (at->layer == Layer_World || at->layer == Layer_Floor)
+                {
+                    rect.min -= render_state->camera_bottom_left;
+                    rect.max -= render_state->camera_bottom_left;
+                }
+
+                rect.min *= glyph_dim;
+                rect.max *= glyph_dim;
+                surface_area = rect;
+            } break;
+        }
+
+        if (IsInRect(surface_area, input->mouse_p))
+        {
+            platform->DebugPrint("type: %s, index: %d\n", type, index);
+        }
+
+        ++index;
     }
 }
