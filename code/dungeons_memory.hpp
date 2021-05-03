@@ -230,4 +230,14 @@ struct ScopedMemory
     operator TemporaryMemory *() { return &temp; }
 };
 
+template <typename T>
+static inline Array<T>
+PushArrayContainer(Arena *arena, size_t capacity)
+{
+    Array<T> result = {};
+    result.capacity = capacity;
+    result.data = PushArray(arena, capacity, T);
+    return result;
+}
+
 #endif /* DUNGEONS_MEMORY_HPP */

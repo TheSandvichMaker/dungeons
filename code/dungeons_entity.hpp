@@ -95,6 +95,12 @@ struct Entity
     uint64_t properties[(EntityProperty_COUNT + 63) / 64];
 };
 
+struct EntityList
+{
+    size_t count;
+    Entity **entities;
+};
+
 enum ActionKind
 {
     Action_None,

@@ -545,6 +545,47 @@ OpenDoor(Entity *e)
     UnsetProperty(e, EntityProperty_Blocking);
 }
 
+static inline Array<Entity *>
+PullInventory(Entity *e)
+{
+    size_t count = 0;
+    for (Entity *item = e->first_in_inventory;
+         item;
+         item = item->next_in_inventory)
+    {
+        count += 1;
+    }
+
+    Array<Entity *> result = PushArrayContainer<Entity *>(GetTempArena(), count);
+    result.count = count;
+
+    size_t i = result.count;
+    for (Entity *item = e->first_in_inventory;
+         item;
+         )
+    {
+        result[--i] = item;
+        Entity *next = item->next_in_inventory;
+        item->next_in_inventory = nullptr;
+        item = next;
+    }
+
+    e->first_in_inventory = nullptr;
+
+    return result;
+}
+
+static inline void
+PlaceInventory(Entity *e, Array<Entity *> items)
+{
+    for (size_t i = 0; i < items.count; ++i)
+    {
+        Entity *item = items[i];
+        item->next_in_inventory = e->first_in_inventory;
+        e->first_in_inventory = item;
+    }
+}
+
 static inline bool
 PlayerAct(void)
 {
@@ -579,58 +620,38 @@ PlayerAct(void)
 
         PushRectOutline(Layer_Ui, MakeRect2iMinDim(2, 2, 24, 16), COLOR_WHITE, COLOR_BLACK);
 
-        int item_count = 0;
-        for (Entity *item = container->first_in_inventory;
-             item;
-             item = item->next_in_inventory)
-        {
-            item_count += 1;
-        }
+        Array<Entity *> items = PullInventory(container);
 
         if (Triggered(input->north)) entity_manager->container_selection_index += 1;
         if (Triggered(input->south)) entity_manager->container_selection_index -= 1;
-        entity_manager->container_selection_index %= item_count;
+        entity_manager->container_selection_index %= items.count;
 
-        bool take_item = Triggered(input->east);
-        Entity *item_to_take = nullptr;
-
-        int item_index = 0;
-        V2i at_p = MakeV2i(5, 3);
-        for (Entity *item = container->first_in_inventory;
-             item;
-             item = item->next_in_inventory)
+        if (Triggered(input->east))
         {
+            Entity *taken_item = RemoveOrdered(&items, entity_manager->container_selection_index);
+            AddToInventory(player, taken_item);
+        }
+
+        V2i at_p = MakeV2i(5, 3);
+        for (size_t i = 0; i < items.count; ++i)
+        {
+            Entity *item = items[i];
+
             Color text_color = MakeColor(127, 127, 127);
-            if (item_index == entity_manager->container_selection_index)
+            if (i == entity_manager->container_selection_index)
             {
                 text_color = COLOR_WHITE;
-                item_to_take = item;
             }
 
             PushTile(Layer_Ui, at_p - MakeV2i(1, 0), item->sprites[item->sprite_index]);
-            PushText(Layer_Ui, at_p,
-                     FormatTempString(" - %.*s", StringExpand(item->name)),
-                     text_color, COLOR_BLACK);
+
+            String text = FormatTempString(" %4d %.*s ", item->amount, StringExpand(item->name));
+            PushText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
+
             at_p.y += 1;
-            item_index += 1;
         }
 
-        if (take_item)
-        {
-            for (Entity **item_at = &container->first_in_inventory;
-                 *item_at;
-                 item_at = &(*item_at)->next_in_inventory)
-            {
-                Entity *item = *item_at;
-                if (item == item_to_take)
-                {
-                    *item_at = item->next_in_inventory;
-                    item->next_in_inventory = nullptr;
-                    AddToInventory(player, item);
-                    break;
-                }
-            }
-        }
+        PlaceInventory(container, items);
 
         return false;
     }

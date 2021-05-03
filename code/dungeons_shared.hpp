@@ -184,4 +184,37 @@ HashCoordinate(V2i p)
     return HashIntegers(p.x, p.y);
 }
 
+template <typename T>
+struct Array
+{
+    size_t capacity;
+    size_t count;
+    T *data;
+
+    T &
+    operator [](size_t i)
+    {
+        AssertSlow(i < count);
+        return data[i];
+    }
+};
+
+template <typename T>
+static inline T
+RemoveOrdered(Array<T> *array_init, size_t remove_index)
+{
+    Array<T> &array = *array_init;
+    Assert(remove_index < array.count);
+
+    T result = array[remove_index];
+
+    array.count -= 1;
+    for (size_t i = remove_index; i < array.count; ++i)
+    {
+        array[i] = array[i + 1];
+    }
+
+    return result;
+}
+
 #endif /* DUNGEONS_SHARED_HPP */
