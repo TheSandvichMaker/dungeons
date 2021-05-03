@@ -87,7 +87,7 @@ AppUpdateAndRender(Platform *platform_)
 
     if (!platform->app_initialized)
     {
-        game_state->tileset    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("tileset.bmp"), 16, 16);
+        // game_state->tileset    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("tileset.bmp"), 16, 16);
         game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font16x16_alt1.bmp"), 16, 16);
         game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font8x16.bmp"), 8, 16);
         InitializeRenderState(&game_state->transient_arena, &platform->backbuffer, &game_state->world_font, &game_state->ui_font);
@@ -124,10 +124,33 @@ AppUpdateAndRender(Platform *platform_)
         for (int y = viewport.min.y; y < viewport.max.y; y += 1)
         for (int x = viewport.min.x; x < viewport.max.x; x += 1)
         {
-            float perlin = OctavePerlinNoise(0.01f*(float)x, 0.01f*(float)y, 6, 0.75f);
-            perlin = (perlin > 0.5f ? 1.0f : 0.0f);
-            Color foreground = LinearToSRGB(Lerp(MakeV3(0.25f, 0.15f, 0.0f), MakeV3(0.1f, 0.25f, 0.1f), perlin));
-            PushTile(Layer_Floor, MakeV2i(x, y), MakeSprite(':', foreground));
+            GenTile tile = GetTile(game_state->gen_tiles, MakeV2i(x, y));
+            if (tile == GenTile_Room)
+            {
+                float perlin = OctavePerlinNoise(64.0f + 0.01f*(float)x, 64.0f + 0.02f*(float)y, 6, 0.75f);
+                Sprite sprite;
+                if (perlin < 0.45f)
+                {
+                    sprite = MakeSprite(Glyph_Tone25, LinearToSRGB(perlin*perlin*MakeColorF(0.75f, 0.35f, 0.0f)));
+                }
+                else
+                {
+                    sprite = MakeSprite('=', LinearToSRGB(perlin*perlin*MakeColorF(0.85f, 0.45f, 0.0f)));
+                }
+                PushTile(Layer_Floor, MakeV2i(x, y), sprite);
+            }
+            else
+            {
+                float perlin = OctavePerlinNoise(0.01f*(float)x, 0.01f*(float)y, 6, 0.75f);
+                perlin = (perlin > 0.5f ? 1.0f : 0.0f);
+                V3 color = Lerp(Square(MakeV3(0.25f, 0.15f, 0.0f)), Square(MakeV3(0.1f, 0.25f, 0.1f)), perlin);
+                if (tile == GenTile_Corridor)
+                {
+                    color *= 3.0f;
+                }
+                Color foreground = LinearToSRGB(color);
+                PushTile(Layer_Floor, MakeV2i(x, y), MakeSprite(Glyph_Tone25, foreground));
+            }
         }
 
         if (player)

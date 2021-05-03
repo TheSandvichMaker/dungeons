@@ -37,6 +37,16 @@ DUNGEONS_INLINE V4 MakeV4(V3 xyz, float w) { return MakeVectorInternal(V4, xyz[0
 DUNGEONS_INLINE V4 MakeV4(float x, V3 yzw) { return MakeVectorInternal(V4, x, yzw[0], yzw[1], yzw[2]); }
 DUNGEONS_INLINE V4 MakeV4(float x, float y, float z, float w) { return MakeVectorInternal(V4, x, y, z, w); }
 
+DUNGEONS_INLINE V3
+MakeColorF(float x, float y, float z)
+{
+    V3 result;
+    result.x = x*x;
+    result.y = y*y;
+    result.z = z*z;
+    return result;
+}
+
 DUNGEONS_INLINE V2i MakeV2i(int32_t s) { return MakeVectorInternal(V2i, s, s); }
 DUNGEONS_INLINE V2i MakeV2i(int32_t x, int32_t y) { return MakeVectorInternal(V2i, x, y); }
 DUNGEONS_INLINE V3i MakeV3i(int32_t s) { return MakeVectorInternal(V3i, s, s, s); }
@@ -241,6 +251,10 @@ Perpendicular(V2i a)
 
 DUNGEONS_INLINE float Square(float x) { return x*x; }
 DUNGEONS_INLINE float SquareRoot(float x) { return sqrtf(x); }
+DUNGEONS_INLINE V2 Square(V2 x) { return x*x; }
+DUNGEONS_INLINE V2 SquareRoot(V2 x) { return { SquareRoot(x.x), SquareRoot(x.y) }; }
+DUNGEONS_INLINE V3 Square(V3 x) { return x*x; }
+DUNGEONS_INLINE V3 SquareRoot(V3 x) { return { SquareRoot(x.x), SquareRoot(x.y), SquareRoot(x.z) }; }
 
 DUNGEONS_INLINE float Sin(float x) { return sinf(x); }
 DUNGEONS_INLINE float Cos(float x) { return cosf(x); }

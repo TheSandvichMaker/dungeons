@@ -176,10 +176,10 @@ PLATFORM_JOB(DoWorldGen)
         {
             start_p = MakeV2i(1, 1) + 2*(RandomInRect(&entropy, map_bounds) / 2);
         }
-        while (GetTile(tiles, start_p) == GenTile_Room);
+        while (GetTile(tiles, start_p) != GenTile_Void);
 
         V2i at_p = start_p;
-        SetTile(tiles, at_p, GenTile_Room);
+        SetTile(tiles, at_p, GenTile_Corridor);
 
         bool backing_up = false;
         for (;;)
@@ -208,8 +208,8 @@ PLATFORM_JOB(DoWorldGen)
                 if ((GetTile(tiles, next_p) == GenTile_Void) &&
                     (GetTile(tiles, inbetween_p) == GenTile_Void))
                 {
-                    SetTile(tiles, next_p, GenTile_Room);
-                    SetTile(tiles, inbetween_p, GenTile_Room);
+                    SetTile(tiles, next_p, GenTile_Corridor);
+                    SetTile(tiles, inbetween_p, GenTile_Corridor);
 
                     corridor[corridor_at++] = next_p;
 
@@ -291,18 +291,18 @@ PLATFORM_JOB(DoWorldGen)
                 if ((option.x == rect.min.x) ||
                     (option.x == rect.max.x))
                 {
-                    door_connects = ((GetTile(tiles, option + MakeV2i(1, 0)) == GenTile_Room) &&
-                                     (GetTile(tiles, option - MakeV2i(1, 0)) == GenTile_Room) &&
-                                     (GetTile(tiles, option + MakeV2i(0, 1)) == GenTile_Void) &&
-                                     (GetTile(tiles, option - MakeV2i(0, 1)) == GenTile_Void));
+                    door_connects = (Walkable(GetTile(tiles, option + MakeV2i(1, 0))) &&
+                                     Walkable(GetTile(tiles, option - MakeV2i(1, 0))) &&
+                                     !Walkable(GetTile(tiles, option + MakeV2i(0, 1))) &&
+                                     !Walkable(GetTile(tiles, option - MakeV2i(0, 1))));
                 }
                 if ((option.y == rect.min.y) ||
                     (option.y == rect.max.y))
                 {
-                    door_connects = ((GetTile(tiles, option + MakeV2i(0, 1)) == GenTile_Room) &&
-                                     (GetTile(tiles, option - MakeV2i(0, 1)) == GenTile_Room) &&
-                                     (GetTile(tiles, option + MakeV2i(1, 0)) == GenTile_Void) &&
-                                     (GetTile(tiles, option - MakeV2i(1, 0)) == GenTile_Void));
+                    door_connects = (Walkable(GetTile(tiles, option + MakeV2i(0, 1))) &&
+                                     Walkable(GetTile(tiles, option - MakeV2i(0, 1))) &&
+                                     !Walkable(GetTile(tiles, option + MakeV2i(1, 0))) &&
+                                     !Walkable(GetTile(tiles, option - MakeV2i(1, 0))));
                 }
 
                 if (door_connects)
@@ -341,7 +341,7 @@ PLATFORM_JOB(DoWorldGen)
             {
                 V2i direction = directions[direction_index];
                 V2i test_p = at_p + direction;
-                if ((GetTile(tiles, test_p) == GenTile_Room) ||
+                if ((GetTile(tiles, test_p) == GenTile_Corridor) ||
                     (GetTile(tiles, test_p) == GenTile_Door))
                 {
                     neighbors[neighbor_count++] = test_p;
@@ -380,8 +380,10 @@ PLATFORM_JOB(DoWorldGen)
     for (int x = 0; x < tiles->w; ++x)
     {
         GenTile tile = GetTile(tiles, MakeV2i(x, y));
-        if (tile == GenTile_Room)
+        if (tile == GenTile_Void)
         {
+            bool make_wall = false;
+            bool borders_room = false;
             for (int search_y = y - 1; search_y <= y + 1; ++search_y)
             for (int search_x = x - 1; search_x <= x + 1; ++search_x)
             {
@@ -393,10 +395,18 @@ PLATFORM_JOB(DoWorldGen)
 
                 V2i search_p = MakeV2i(search_x, search_y);
                 GenTile test_tile = GetTile(tiles, search_p);
-                if (test_tile == GenTile_Void)
+                if (Walkable(test_tile))
                 {
-                    SetTile(tiles, search_p, GenTile_Wall);
+                    make_wall = true;
+                    if (test_tile == GenTile_Room)
+                    {
+                        borders_room = true;
+                    }
                 }
+            }
+            if (make_wall)
+            {
+                SetTile(tiles, MakeV2i(x, y), borders_room ? GenTile_RoomWall : GenTile_Wall);
             }
         }
     }
@@ -416,6 +426,12 @@ PLATFORM_JOB(DoWorldGen)
             AddWall(p);
         }
 
+        if (tile == GenTile_RoomWall)
+        {
+            Entity *wall = AddWall(p);
+            wall->sprites[0] = MakeSprite(Glyph_Solid, MakeColor(196, 196, 196));
+        }
+
         if (tile == GenTile_Door)
         {
             AddDoor(p);
@@ -431,10 +447,7 @@ PLATFORM_JOB(DoWorldGen)
     Entity *leet_gold = AddGold({}, 1337);
     leet_gold->name = StringLiteral("L33T G0LD");
     AddToInventory(chest, leet_gold);
-    Entity *angry_orc = AddGold({}, 1);
-    angry_orc->name = StringLiteral("Angry orc");
-    angry_orc->sprites[0] = MakeSprite('O', MakeColor(255, 0, 0));
-    angry_orc->sprite_count = 1;
+    Entity *angry_orc = AddEntity(StringLiteral("Angry Orc"), {}, MakeSprite('O', MakeColor(255, 0, 0)));
     AddToInventory(chest, angry_orc);
 
     tiles->complete = true;
@@ -465,8 +478,8 @@ EndGenerateWorld(GenTiles **tiles_at)
         result = tiles->complete;
         if (result)
         {
-            Release(&tiles->arena);
-            *tiles_at = nullptr;
+            // Release(&tiles->arena);
+            // *tiles_at = nullptr;
         }
     }
 

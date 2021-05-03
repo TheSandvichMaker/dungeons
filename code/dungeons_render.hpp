@@ -58,6 +58,7 @@ enum
     Glyph_Tone50                 = 177,
     Glyph_Tone75                 = 178,
     /* 179 ... 223               = Box drawing characters */
+    Glyph_Solid                  = 219,
     Glyph_Alpha                  = 224,
     Glyph_Beta                   = 225,
     Glyph_Gamma                  = 226,

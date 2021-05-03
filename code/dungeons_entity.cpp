@@ -111,7 +111,7 @@ AddEntity(String name, V2i p, Sprite sprite, EntityPropertySet initial_propertie
 static inline Entity *
 AddWall(V2i p)
 {
-    Entity *e = AddEntity(StringLiteral("Wall"), p, MakeSprite('#', MakeColor(225, 225, 225)));
+    Entity *e = AddEntity(StringLiteral("Wall"), p, MakeSprite(Glyph_Tone50, MakeColor(110, 165, 100)));
     SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Blocking);
     return e;
 }
@@ -119,7 +119,7 @@ AddWall(V2i p)
 static inline Entity *
 AddDoor(V2i p)
 {
-    Entity *e = AddEntity(StringLiteral("Door"), p, MakeSprite('$', MakeColor(255, 127, 0)));
+    Entity *e = AddEntity(StringLiteral("Door"), p, MakeSprite('#', MakeColor(255, 127, 0)));
     SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Door|EntityProperty_Blocking);
     return e;
 }
@@ -560,14 +560,14 @@ PullInventory(Entity *e)
     result.count = count;
 
     size_t i = result.count;
-    for (Entity *item = e->first_in_inventory;
-         item;
-         )
+    while (e->first_in_inventory)
     {
-        result[--i] = item;
-        Entity *next = item->next_in_inventory;
+        Entity *item = e->first_in_inventory;
+
+        e->first_in_inventory = item->next_in_inventory;
         item->next_in_inventory = nullptr;
-        item = next;
+
+        result[--i] = item;
     }
 
     e->first_in_inventory = nullptr;
@@ -622,8 +622,8 @@ PlayerAct(void)
 
         Array<Entity *> items = PullInventory(container);
 
-        if (Triggered(input->north)) entity_manager->container_selection_index += 1;
-        if (Triggered(input->south)) entity_manager->container_selection_index -= 1;
+        if (Triggered(input->north)) entity_manager->container_selection_index -= 1;
+        if (Triggered(input->south)) entity_manager->container_selection_index += 1;
         entity_manager->container_selection_index %= items.count;
 
         if (Triggered(input->east))
@@ -632,7 +632,7 @@ PlayerAct(void)
             AddToInventory(player, taken_item);
         }
 
-        V2i at_p = MakeV2i(5, 3);
+        V2i at_p = MakeV2i(5, 16);
         for (size_t i = 0; i < items.count; ++i)
         {
             Entity *item = items[i];
@@ -648,7 +648,7 @@ PlayerAct(void)
             String text = FormatTempString(" %4d %.*s ", item->amount, StringExpand(item->name));
             PushText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
 
-            at_p.y += 1;
+            at_p.y -= 1;
         }
 
         PlaceInventory(container, items);

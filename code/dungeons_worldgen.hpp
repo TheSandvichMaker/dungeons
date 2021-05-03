@@ -11,10 +11,19 @@ enum GenTile
 {
     GenTile_Void = 0,
     GenTile_Room,
-    GenTile_Wall,
+    GenTile_Corridor,
     GenTile_Door,
+    GenTile_Wall,
+    GenTile_RoomWall,
     GenTile_NotAllowed,
 };
+
+static inline bool
+Walkable(GenTile tile)
+{
+    return ((tile == GenTile_Room) ||
+            (tile == GenTile_Corridor));
+}
 
 struct GenTiles
 {
