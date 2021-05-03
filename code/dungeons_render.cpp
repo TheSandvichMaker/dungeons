@@ -18,7 +18,7 @@ InitializeRenderState(Arena *arena, Bitmap *target, Font *world_font, Font *ui_f
                               world_font->glyph_w, world_font->glyph_h, ui_font->glyph_w, ui_font->glyph_h);
     }
 
-    render_state->cb_size = Megabytes(4); // random choice
+    render_state->cb_size = Megabytes(1); // random choice
     render_state->command_buffer = PushArrayNoClear(arena, render_state->cb_size, char);
 
     render_state->wall_segment_lookup[Wall_Top|Wall_Bottom]                                          = 179;
@@ -264,6 +264,9 @@ PushRenderCommand(RenderLayer layer, V2i p, Sprite sprite)
 
         command->p = p;
         command->sprite = sprite;
+
+        render_state->command_buffer_hash = HashData(render_state->command_buffer_hash, sizeof(*sort_key), sort_key);
+        render_state->command_buffer_hash = HashData(render_state->command_buffer_hash, sizeof(*command), command);
     }
 
     return command;
@@ -338,11 +341,15 @@ BeginRender(void)
     Arena *arena = GetTempArena();
     render_state->arena = arena;
 
+    render_state->fonts[Layer_Floor] = render_state->world_font;
     render_state->fonts[Layer_World] = render_state->world_font;
     render_state->fonts[Layer_Ui] = render_state->ui_font;
 
     render_state->cb_command_at = 0;
     render_state->cb_sort_key_at = render_state->cb_size;
+
+    Swap(render_state->command_buffer_hash, render_state->prev_command_buffer_hash);
+    render_state->command_buffer_hash = 0;
 }
 
 struct TiledRenderJobParams
@@ -373,7 +380,7 @@ PLATFORM_JOB(TiledRenderJob)
         V2i p = MakeV2i(command->p.x, command->p.y);
         Sprite *sprite = &command->sprite;
 
-        if (at->layer == Layer_World)
+        if (at->layer == Layer_World || at->layer == Layer_Floor)
         {
             p -= GlyphDim(font)*render_state->camera_bottom_left;
         }
@@ -472,5 +479,8 @@ RenderCommandsToBitmap(Bitmap *target)
 static void
 EndRender(void)
 {
-    RenderCommandsToBitmap(render_state->target);
+    if (render_state->command_buffer_hash != render_state->prev_command_buffer_hash)
+    {
+        RenderCommandsToBitmap(render_state->target);
+    }
 }

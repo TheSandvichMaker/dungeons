@@ -62,9 +62,9 @@ LoadFontFromDisk(Arena *arena, String filename, int glyph_w, int glyph_h)
 DUNGEONS_INLINE Color
 LinearToSRGB(V3 linear)
 {
-    Color result = MakeColor((uint8_t)(linear.x*255.0f),
-                             (uint8_t)(linear.y*255.0f),
-                             (uint8_t)(linear.z*255.0f));
+    Color result = MakeColor((uint8_t)(SquareRoot(linear.x)*255.0f),
+                             (uint8_t)(SquareRoot(linear.y)*255.0f),
+                             (uint8_t)(SquareRoot(linear.z)*255.0f));
     return result;
 }
 
@@ -114,6 +114,21 @@ AppUpdateAndRender(Platform *platform_)
         Entity *player = entity_manager->player;
 
         PushRect(Layer_Ui, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13), COLOR_WHITE, COLOR_BLACK);
+
+        Bitmap *target = render_state->target;
+        Font *world_font = render_state->world_font;
+        int viewport_w = (target->w + world_font->glyph_w - 1) / world_font->glyph_w;
+        int viewport_h = (target->h + world_font->glyph_h - 1) / world_font->glyph_h;
+
+        Rect2i viewport = MakeRect2iMinDim(render_state->camera_bottom_left, MakeV2i(viewport_w, viewport_h));
+        for (int y = viewport.min.y; y < viewport.max.y; y += 1)
+        for (int x = viewport.min.x; x < viewport.max.x; x += 1)
+        {
+            float perlin = OctavePerlinNoise(0.01f*(float)x, 0.01f*(float)y, 6, 0.65f);
+            perlin = (perlin > 0.5f ? 1.0f : 0.0f);
+            Color foreground = LinearToSRGB(Lerp(MakeV3(0.25f, 0.15f, 0.0f), MakeV3(0.1f, 0.25f, 0.1f), perlin));
+            PushTile(Layer_Floor, MakeV2i(x, y), MakeSprite(':', foreground));
+        }
 
         if (player)
         {

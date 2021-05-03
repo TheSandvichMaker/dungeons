@@ -124,7 +124,7 @@ enum WallSegment
 
 enum RenderLayer
 {
-    Layer_None,
+    Layer_Floor,
     Layer_World,
     Layer_Ui,
     Layer_COUNT,
@@ -156,6 +156,9 @@ struct RenderState
     V2i camera_bottom_left;
 
     Glyph wall_segment_lookup[Wall_MAXVALUE + 1];
+
+    uint64_t command_buffer_hash;
+    uint64_t prev_command_buffer_hash;
 
     RenderCommand null_command;
     uint32_t cb_size;
