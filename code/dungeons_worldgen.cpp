@@ -441,14 +441,29 @@ PLATFORM_JOB(DoWorldGen)
     GenRoom *starting_room = &tiles->rooms[RandomChoice(&entropy, tiles->room_count)];
     V2i player_spawn_p = (starting_room->rect.min + starting_room->rect.max) / 2;
     AddPlayer(player_spawn_p);
+
+    Entity *chest_key = AddEntity(StringLiteral("Chest Key"), player_spawn_p - MakeV2i(2, 0), MakeSprite(Glyph_Male, MakeColor(125, 255, 0)));
+    SetProperty(chest_key, EntityProperty_Item);
     
     Entity *chest = AddChest(player_spawn_p + MakeV2i(2, 0));
+    LockWithKey(chest, chest_key);
     AddToInventory(chest, AddGold({}, 420));
+
     Entity *leet_gold = AddGold({}, 1337);
     leet_gold->name = StringLiteral("L33T G0LD");
     AddToInventory(chest, leet_gold);
+
     Entity *angry_orc = AddEntity(StringLiteral("Angry Orc"), {}, MakeSprite('O', MakeColor(255, 0, 0)));
     AddToInventory(chest, angry_orc);
+
+    Entity *key = AddEntity(StringLiteral("Shiny Key"), {}, MakeSprite(Glyph_Male, MakeColor(255, 200, 0)));
+    AddToInventory(chest, key);
+
+    Entity *door = FindClosestEntity(chest->p, EntityProperty_Door);
+    if (door)
+    {
+        LockWithKey(door, key);
+    }
 
     tiles->complete = true;
 }

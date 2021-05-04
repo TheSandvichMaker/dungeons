@@ -38,7 +38,7 @@ static inline Entity *
 EntityFromHandle(EntityHandle handle)
 {
     Entity *slot = &entity_manager->entities[handle.index];
-    if (slot->handle.generation == handle.generation)
+    if (slot->handle == handle)
     {
         return slot;
     }
@@ -99,6 +99,12 @@ MoveEntity(Entity *e, V2i p)
     return true;
 }
 
+static inline void
+SetTrigger(Entity *e, TriggerKind kind)
+{
+    e->trigger = kind;
+}
+
 static inline Entity *
 AddEntity(String name, V2i p, Sprite sprite, EntityPropertySet initial_properties = {})
 {
@@ -150,7 +156,8 @@ static inline Entity *
 AddDoor(V2i p)
 {
     Entity *e = AddEntity(StringLiteral("Door"), p, MakeSprite('#', MakeColor(255, 127, 0)));
-    SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Door|EntityProperty_Blocking);
+    SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Door|EntityProperty_Unlockable|EntityProperty_Blocking);
+    SetTrigger(e, Trigger_Unblock);
     return e;
 }
 
@@ -184,7 +191,8 @@ static inline Entity *
 AddChest(V2i p)
 {
     Entity *e = AddEntity(StringLiteral("Chest"), p, MakeSprite('M', MakeColor(127, 255, 0)));
-    SetProperties(e, EntityProperty_Container|EntityProperty_Invulnerable|EntityProperty_Blocking);
+    SetProperties(e, EntityProperty_Unlockable|EntityProperty_Invulnerable|EntityProperty_Blocking);
+    SetTrigger(e, Trigger_Container);
     return e;
 }
 
@@ -560,7 +568,7 @@ FindPath(Arena *arena, V2i start, V2i target)
     return result;
 }
 
-static inline Array<Entity *>
+static inline EntityArray
 Linearize(EntityList *list)
 {
     int count = 0;
@@ -569,7 +577,7 @@ Linearize(EntityList *list)
         count += 1;
     }
 
-    Array<Entity *> result = PushArrayContainer<Entity *>(GetTempArena(), count);
+    EntityArray result = PushArrayContainer<Entity *>(GetTempArena(), count);
 
     for (EntityNode *node = list->first; node; node = node->next)
     {
@@ -583,7 +591,7 @@ Linearize(EntityList *list)
     return result;
 }
 
-static inline Array<Entity *>
+static inline EntityArray
 Pull(EntityList *list)
 {
     int count = 0;
@@ -592,14 +600,14 @@ Pull(EntityList *list)
         count += 1;
     }
 
-    Array<Entity *> result = PushArrayContainer<Entity *>(GetTempArena(), count);
+    EntityArray result = PushArrayContainer<Entity *>(GetTempArena(), count);
 
     while (list->first)
     {
         EntityNode *node = SllQueuePop(list->first, list->last);
 
         Entity *e = EntityFromHandle(node->handle);
-        if (e)
+        if (e && HasProperty(e, EntityProperty_Alive))
         {
             Push(&result, e);
         }
@@ -612,13 +620,22 @@ Pull(EntityList *list)
 }
 
 static inline void
-Place(EntityList *list, Array<Entity *> array)
+Place(EntityList *list, EntityArray array)
 {
     for (size_t i = 0; i < array.count; ++i)
     {
         EntityNode *node = NewEntityNode(array[i]);
         SllQueuePush(list->first, list->last, node);
     }
+}
+
+static inline void
+CleanStaleReferences(EntityList *list)
+{
+    // NOTE: Because pulling the list already filters out invalid handles,
+    // we can just rely on that. Cheeky. Performant? Maybe not. Whatever.
+    EntityArray array = Pull(list);
+    Place(list, array);
 }
 
 static inline void
@@ -632,16 +649,51 @@ AddToInventory(Entity *e, Entity *item)
 }
 
 static inline void
-OpenDoor(Entity *e)
+LockWithKey(Entity *e, Entity *key)
 {
-    e->open = true;
-    UnsetProperty(e, EntityProperty_Blocking);
+    Assert(e->required_key == NullEntityHandle());
+    e->required_key = key->handle;
+    e->open = false;
+    SetProperty(e, EntityProperty_Unlockable);
+}
+
+static inline bool
+TryOpen(Entity *e, Entity *other)
+{
+    bool open = false;
+    if (e->required_key == NullEntityHandle())
+    {
+        open = true;
+    }
+    else
+    {
+        ForSll (item, other->inventory.first)
+        {
+            if (item->handle == e->required_key)
+            {
+                Entity *key = EntityFromHandle(item->handle);
+                KillEntity(key);
+                open = true;
+            }
+        }
+    }
+
+    if (open)
+    {
+        e->open = true;
+        if (HasProperty(e, EntityProperty_Door))
+        {
+            UnsetProperty(e, EntityProperty_Blocking);
+        }
+    }
+
+    return open;
 }
 
 static inline void
 InteractWithContainer(Entity *player, Entity *container)
 {
-    Array<Entity *> items = Pull(&container->inventory);
+    EntityArray items = Pull(&container->inventory);
 
     if (Triggered(input->north)) entity_manager->container_selection_index -= 1;
     if (Triggered(input->south)) entity_manager->container_selection_index += 1;
@@ -659,7 +711,7 @@ InteractWithContainer(Entity *player, Entity *container)
 static inline void
 DrawEntityList(EntityList *list, Rect2i rect, int highlight_index = -1)
 {
-    Array<Entity *> items = Linearize(list);
+    EntityArray items = Linearize(list);
     rect.max.y = Min(rect.max.y, rect.min.y + (int)items.count + 2);
     rect.max.y = Max(rect.min.y + 3, rect.max.y);
 
@@ -692,6 +744,34 @@ DrawEntityList(EntityList *list, Rect2i rect, int highlight_index = -1)
         Color text_color = MakeColor(127, 127, 127);
         String text = FormatTempString("  Nothing here...");
         PushText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
+    }
+}
+
+static inline void
+ProcessTrigger(Entity *e, Entity *other)
+{
+    if (HasProperty(e, EntityProperty_Unlockable))
+    {
+        TryOpen(e, other);
+
+        if (!e->open)
+        {
+            // Must be open to interact with it!
+            return;
+        }
+    }
+
+    switch (e->trigger)
+    {
+        case Trigger_Unblock:
+        {
+            UnsetProperty(e, EntityProperty_Blocking);
+        } break;
+
+        case Trigger_Container:
+        {
+            entity_manager->looking_at_container = e;
+        } break;
     }
 }
 
@@ -751,19 +831,14 @@ PlayerAct(void)
         {
             Entity *e = at_move_p.entity;
 
-            if (HasProperty(e, EntityProperty_Container))
+            if (e->trigger)
             {
-                entity_manager->looking_at_container = e;
+                ProcessTrigger(e, player);
             }
 
             if (HasProperty(e, EntityProperty_Blocking))
             {
-                if (HasProperty(e, EntityProperty_Door))
-                {
-                    OpenDoor(e);
-                    return true;
-                }
-                else if (HasProperty(e, EntityProperty_Invulnerable))
+                if (HasProperty(e, EntityProperty_Invulnerable))
                 {
                     // blocked with no recourse
                     blocked = true;
@@ -906,12 +981,22 @@ UpdateAndRenderEntities(void)
         {
             PushTile(Layer_World, e->p, sprite);
         }
+
+        if (HasProperty(e, EntityProperty_PlayerControlled))
+        {
+            int y = 0; (void)y;
+        }
+        CleanStaleReferences(&e->inventory);
     }
 
     if (entity_manager->looking_at_container)
     {
         Entity *container = entity_manager->looking_at_container;
-        DrawEntityList(&container->inventory, MakeRect2iMinDim(2, 2, 24, 16), entity_manager->container_selection_index);
+
+        if (container->inventory.first)
+        {
+            DrawEntityList(&container->inventory, MakeRect2iMinDim(2, 2, 24, 16), entity_manager->container_selection_index);
+        }
     }
 }
 

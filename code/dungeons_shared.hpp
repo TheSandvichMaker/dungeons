@@ -200,6 +200,20 @@ struct Array
 };
 
 template <typename T>
+static inline T *
+begin(Array<T> &array)
+{
+    return array.data;
+}
+
+template <typename T>
+static inline T *
+end(Array<T> &array)
+{
+    return array.data + array.count;
+}
+
+template <typename T>
 static inline void
 Push(Array<T> *array_init, T item)
 {

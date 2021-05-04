@@ -125,14 +125,16 @@ AppUpdateAndRender(Platform *platform_)
     {
         UpdateAndRenderEntities();
 
+        Bitmap *target = render_state->target;
+        Font *world_font = render_state->world_font;
+
         Entity *player = entity_manager->player;
         if (player)
         {
-            render_state->camera_bottom_left = player->p - MakeV2i(42, 20);
+            V2i render_tile_dim = MakeV2i(platform->render_w / world_font->glyph_w, platform->render_h / world_font->glyph_h);
+            render_state->camera_bottom_left = player->p - render_tile_dim / 2;
         }
 
-        Bitmap *target = render_state->target;
-        Font *world_font = render_state->world_font;
         int viewport_w = (target->w + world_font->glyph_w - 1) / world_font->glyph_w;
         int viewport_h = (target->h + world_font->glyph_h - 1) / world_font->glyph_h;
 
@@ -171,7 +173,7 @@ AppUpdateAndRender(Platform *platform_)
 
         if (player)
         {
-            DrawEntityList(&player->inventory, MakeRect2iMinDim(2, render_state->ui_top_right.y - 14, 36, 13));
+            DrawEntityList(&player->inventory, MakeRect2iMinDim(2, render_state->ui_top_right.y - 4, 36, 13));
         }
 
         V2i at_p = MakeV2i(40, render_state->ui_top_right.y - 3);

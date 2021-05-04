@@ -977,7 +977,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
      platform->exe_reloaded = true;
 
     HCURSOR arrow_cursor = LoadCursorW(nullptr, IDC_ARROW);
-    HWND window = Win32_CreateWindow(instance, 32, 32, 1280, 720, L"Dungeons");
+    HWND window = Win32_CreateWindow(instance, 32, 32, 720, 480, L"Dungeons");
     if (!window)
     {
         platform->ReportError(PlatformError_Fatal, "Could not create window");

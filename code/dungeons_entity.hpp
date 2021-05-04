@@ -22,9 +22,9 @@ enum EntityPropertyKind
     EntityProperty_Blocking,
     EntityProperty_PlayerControlled,
     EntityProperty_Invulnerable,
+    EntityProperty_Unlockable,
     EntityProperty_Door,
     EntityProperty_Item,
-    EntityProperty_Container,
     EntityProperty_Martins,
     EntityProperty_C,
     EntityProperty_AngryDude,
@@ -62,6 +62,8 @@ NullEntityHandle(void)
     return result;
 }
 
+struct Entity;
+
 struct EntityNode
 {
     EntityNode *next;
@@ -72,6 +74,16 @@ struct EntityList
 {
     EntityNode *first;
     EntityNode *last;
+};
+
+typedef Array<Entity *> EntityArray;
+
+enum TriggerKind
+{
+    Trigger_None,
+    Trigger_Unblock,
+    Trigger_Container,
+    Trigger_COUNT,
 };
 
 struct Entity
@@ -88,7 +100,11 @@ struct Entity
 
     String name;
 
+    TriggerKind trigger;
+
+    EntityHandle required_key;
     bool open;
+
     int32_t amount;
 
     V2i p;
@@ -148,6 +164,8 @@ GLOBAL_STATE(EntityManager, entity_manager);
 
 static inline EntityNode *NewEntityNode(Entity *entity);
 static inline void FreeEntityNode(EntityNode *node);
+static inline Entity *EntityFromHandle(EntityHandle handle);
+static inline EntityHandle HandleFromEntity(Entity *entity);
 
 static inline void
 SetProperty(Entity *e, EntityPropertyKind property)
