@@ -170,6 +170,7 @@ struct RenderState
 
     V2i ui_top_right;
     V2i camera_bottom_left;
+    Rect2i viewport;
 
     Glyph wall_segment_lookup[Wall_MAXVALUE + 1];
 

@@ -135,20 +135,31 @@ AppUpdateAndRender(Platform *platform_)
         for (int y = viewport.min.y; y < viewport.max.y; y += 1)
         for (int x = viewport.min.x; x < viewport.max.x; x += 1)
         {
-            GenTile tile = GetTile(game_state->gen_tiles, MakeV2i(x, y));
+            V2i p = MakeV2i(x, y);
+            GenTile tile = GetTile(game_state->gen_tiles, p);
             if (SeenByPlayer(game_state->gen_tiles, MakeV2i(x, y)))
             {
+                VisibilityGrid *grid = &entity_manager->player_visibility;
+                bool currently_visible = false;
+                if (IsInRect(grid->bounds, p))
+                {
+                    int w = GetWidth(grid->bounds);
+                    int rel_x = p.x - grid->bounds.min.x;
+                    int rel_y = p.y - grid->bounds.min.y;
+                    currently_visible = grid->tiles[rel_y*w + rel_x];
+                }
+                float visibility_mod = currently_visible ? 1.0f : 0.5f;
                 if (tile == GenTile_Room)
                 {
                     float perlin = OctavePerlinNoise(64.0f + 0.01f*(float)x, 64.0f + 0.02f*(float)y, 6, 0.75f);
                     Sprite sprite;
                     if (perlin < 0.45f)
                     {
-                        sprite = MakeSprite(Glyph_Tone25, LinearToSRGB(perlin*perlin*MakeColorF(0.75f, 0.35f, 0.0f)));
+                        sprite = MakeSprite(Glyph_Tone25, LinearToSRGB(perlin*perlin*visibility_mod*MakeColorF(0.75f, 0.35f, 0.0f)));
                     }
                     else
                     {
-                        sprite = MakeSprite('=', LinearToSRGB(perlin*perlin*MakeColorF(0.85f, 0.45f, 0.0f)));
+                        sprite = MakeSprite('=', LinearToSRGB(perlin*perlin*visibility_mod*MakeColorF(0.85f, 0.45f, 0.0f)));
                     }
                     PushTile(Layer_Floor, MakeV2i(x, y), sprite);
                 }
@@ -156,7 +167,7 @@ AppUpdateAndRender(Platform *platform_)
                 {
                     float perlin = OctavePerlinNoise(0.01f*(float)x, 0.01f*(float)y, 6, 0.75f);
                     perlin = (perlin > 0.5f ? 1.0f : 0.0f);
-                    V3 color = Lerp(Square(MakeV3(0.25f, 0.15f, 0.0f)), Square(MakeV3(0.1f, 0.25f, 0.1f)), perlin);
+                    V3 color = visibility_mod*Lerp(Square(MakeV3(0.25f, 0.15f, 0.0f)), Square(MakeV3(0.1f, 0.25f, 0.1f)), perlin);
                     if (tile == GenTile_Corridor)
                     {
                         color *= 3.0f;

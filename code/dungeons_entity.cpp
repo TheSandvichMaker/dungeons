@@ -885,7 +885,7 @@ PushVisibilityGrid(Arena *arena, Rect2i bounds)
 }
 
 static inline void
-CalculateVisibility(VisibilityGrid *grid, Entity *e)
+CalculateVisibility(VisibilityGrid *grid, Entity *e, float radius)
 {
     int w = GetWidth(grid->bounds);
     int h = GetHeight(grid->bounds);
@@ -893,29 +893,50 @@ CalculateVisibility(VisibilityGrid *grid, Entity *e)
     for (int x = 0; x <= w; x += 1)
     {
         V2i p = MakeV2i(x + grid->bounds.min.x, y + grid->bounds.min.y);
-        EntityIter hit_entities = TraceLine(e->p, p);
-        if (IsValid(hit_entities))
+        if (Length(e->p - p) <= radius)
         {
-            grid->tiles[y*w + x] = true;
-            for (; IsValid(hit_entities); Next(&hit_entities))
+            EntityIter hit_entities = TraceLine(e->p, p);
+            if (IsValid(hit_entities))
             {
-                Entity *seen = hit_entities.entity;
-                seen->seen_by_player = true;
+                for (; IsValid(hit_entities); Next(&hit_entities))
+                {
+                    Entity *seen = hit_entities.entity;
+                    if (IsInRect(grid->bounds, seen->p))
+                    {
+                        V2i seen_rel_p = seen->p - grid->bounds.min;
+                        grid->tiles[seen_rel_p.y*w + seen_rel_p.x] = true;
+                    }
+                    seen->seen_by_player = true;
+                }
             }
-        }
-        else
-        {
-            grid->tiles[y*w + x] = false;
-            SetSeenByPlayer(game_state->gen_tiles, p, true);
-            for (EntityIter on_tile = GetEntitiesAt(p);
-                 IsValid(on_tile);
-                 Next(&on_tile))
+            else
             {
-                Entity *seen = on_tile.entity;
-                seen->seen_by_player = true;
+                grid->tiles[y*w + x] = true;
+                SetSeenByPlayer(game_state->gen_tiles, p, true);
+                for (EntityIter on_tile = GetEntitiesAt(p);
+                     IsValid(on_tile);
+                     Next(&on_tile))
+                {
+                    Entity *seen = on_tile.entity;
+                    seen->seen_by_player = true;
+                }
             }
         }
     }
+}
+
+static inline bool
+IsVisible(VisibilityGrid *grid, V2i p)
+{
+    bool result = false;
+    if (IsInRect(grid->bounds, p))
+    {
+        int w = GetWidth(grid->bounds);
+        int rel_x = p.x - grid->bounds.min.x;
+        int rel_y = p.y - grid->bounds.min.y;
+        result = grid->tiles[rel_y*w + rel_x];
+    }
+    return result;
 }
 
 static inline void
@@ -927,74 +948,32 @@ UpdateAndRenderEntities(void)
         {
             int player_view_radius = 16;
             entity_manager->player_visibility = PushVisibilityGrid(GetTempArena(), MakeRect2iCenterHalfDim(entity_manager->player->p, MakeV2i(player_view_radius)));
-            CalculateVisibility(&entity_manager->player_visibility, entity_manager->player);
+            CalculateVisibility(&entity_manager->player_visibility, entity_manager->player, (float)player_view_radius);
         }
 
         if (PlayerAct())
         {
             // entity_manager->turn_timer += 0.10f;
-            for (EntityIter it = IterateAllEntities(EntityProperty_Martins); IsValid(it); Next(&it))
-            {
-                Entity *e = it.entity;
-
-                e->energy += e->speed;
-                if (e->energy < 100)
-                {
-                    continue;
-                }
-
-                while (e->energy >= 100)
-                {
-                    Clear(&entity_manager->turn_arena);
-
-                    Path best_path = {};
-                    best_path.length = UINT32_MAX;
-
-                    Entity *closest_target = nullptr;
-
-                    EntityIter target_it = IterateAllEntities(EntityProperty_C);
-                    if (!IsValid(target_it))
-                    {
-                        target_it = IterateAllEntities(EntityProperty_PlayerControlled);
-                    }
-
-                    for (; IsValid(target_it); Next(&target_it))
-                    {
-                        Entity *test_target = target_it.entity;
-
-                        Path path = FindPath(&entity_manager->turn_arena, e->p, test_target->p);
-                        if (path.length > 0 && path.length < best_path.length)
-                        {
-                            closest_target = test_target;
-                            best_path = path;
-                        }
-                    }
-
-                    if (closest_target)
-                    {
-                        V2i new_p = best_path.positions[0];
-                        if (AreEqual(new_p, closest_target->p))
-                        {
-                            if (DamageEntity(closest_target, 999))
-                            {
-                                platform->LogPrint(PlatformLogLevel_Info, "Martins eviscerated a %.*s", StringExpand(closest_target->name));
-                            }
-                        }
-                        else
-                        {
-                            MoveEntity(e, new_p);
-                        }
-                    }
-
-                    e->energy -= 100;
-                }
-            }
         }
     }
     else
     {
         entity_manager->turn_timer -= platform->dt;
     }
+
+    Font *world_font = render_state->world_font;
+    Entity *player = entity_manager->player;
+    if (player)
+    {
+        V2i render_tile_dim = MakeV2i(platform->render_w / world_font->glyph_w, platform->render_h / world_font->glyph_h);
+        render_state->camera_bottom_left = player->p - render_tile_dim / 2;
+    }
+
+    int viewport_w = (platform->render_w + world_font->glyph_w - 1) / world_font->glyph_w;
+    int viewport_h = (platform->render_h + world_font->glyph_h - 1) / world_font->glyph_h;
+
+    Rect2i viewport = MakeRect2iMinDim(render_state->camera_bottom_left, MakeV2i(viewport_w, viewport_h));
+    render_state->viewport = viewport;
 
     for (EntityIter it = IterateAllEntities(); IsValid(it); Next(&it))
     {
@@ -1031,9 +1010,21 @@ UpdateAndRenderEntities(void)
             KillEntity(e);
         }
 
-        if (HasProperty(e, EntityProperty_InWorld) && e->seen_by_player)
+        if (IsInRect(viewport, e->p))
         {
-            PushTile(Layer_World, e->p, sprite);
+            if (HasProperty(e, EntityProperty_InWorld) && e->seen_by_player)
+            {
+                if (!IsVisible(&entity_manager->player_visibility, e->p))
+                {
+                    sprite.foreground.r = sprite.foreground.r / 2;
+                    sprite.foreground.g = sprite.foreground.g / 2;
+                    sprite.foreground.b = sprite.foreground.b / 2;
+                    sprite.background.r = sprite.background.r / 2;
+                    sprite.background.g = sprite.background.g / 2;
+                    sprite.background.b = sprite.background.b / 2;
+                }
+                PushTile(Layer_World, e->p, sprite);
+            }
         }
 
         if (HasProperty(e, EntityProperty_PlayerControlled))
