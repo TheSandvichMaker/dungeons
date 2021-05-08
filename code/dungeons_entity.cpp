@@ -175,6 +175,8 @@ AddPlayer(V2i p)
     Entity *e = AddEntity(StringLiteral("Player"), p, MakeSprite('@', MakeColor(255, 255, 0)));
     SetProperties(e, EntityProperty_PlayerControlled|EntityProperty_Blocking);
 
+    e->health = 100;
+
     Assert(!entity_manager->player);
     entity_manager->player = e;
 
@@ -333,29 +335,41 @@ Next(EntityIter *iter)
     }
 }
 
-static inline EntityIter
+static inline EntityArray
 GetEntitiesAt(V2i p, EntityPropertySet filter = {})
 {
-    EntityIter result = {};
+    EntityArray result = {};
     if (IsInWorld(p))
     {
         Entity *list = entity_manager->entity_grid[p.x][p.y];
-        result = IterateEntityList(list, next_on_tile, filter);
+
+        size_t count = 0;
+        for (Entity *e = list; e; e = e->next_on_tile)
+        {
+            if (HasProperties(e, filter))
+            {
+                count += 1;
+            }
+        }
+
+        result = PushArrayContainer<Entity *>(GetTempArena(), count);
+
+        for (Entity *e = list; e; e = e->next_on_tile)
+        {
+            if (HasProperties(e, filter))
+            {
+                Push(&result, e);
+            }
+        }
     }
     return result;
-}
-
-static inline EntityIter
-GetEntitiesAt(V2i p, EntityPropertyKind prop)
-{
-    return GetEntitiesAt(p, MakeSet(prop));
 }
 
 static inline bool
 TileBlocked(V2i p)
 {
-    EntityIter iter = GetEntitiesAt(p, MakeSet(EntityProperty_Blocking));
-    return IsValid(iter);
+    EntityArray arr = GetEntitiesAt(p, MakeSet(EntityProperty_Blocking));
+    return arr.count > 0;
 }
 
 static inline Entity *
@@ -406,10 +420,10 @@ DamageEntity(Entity *e, int amount)
     return false;
 }
 
-static inline EntityIter
+static inline EntityArray
 TraceLine(V2i start, V2i end, Sprite sprite = MakeSprite(0))
 {
-    EntityIter result = {};
+    EntityArray result = {};
 
     int x0 = start.x;
     int y0 = start.y;
@@ -432,8 +446,8 @@ TraceLine(V2i start, V2i end, Sprite sprite = MakeSprite(0))
 
         if (!AreEqual(p, start))
         {
-            EntityIter on_tile = GetEntitiesAt(p, EntityProperty_Blocking);
-            if (IsValid(on_tile))
+            EntityArray on_tile = GetEntitiesAt(p, MakeSet(EntityProperty_Blocking));
+            if (on_tile.count)
             {
                 result = on_tile;
                 break;
@@ -530,8 +544,7 @@ FindPath(Arena *arena, V2i start, V2i target)
             }
             state->node_hash[slot] = true;
 
-            EntityIter blocking_entities = GetEntitiesAt(p, EntityProperty_Blocking);
-            if (!IsValid(blocking_entities) || AreEqual(p, target))
+            if (!TileBlocked(p) || AreEqual(p, target))
             {
                 PathNode *node = PushStruct(temp_arena, PathNode);
                 node->prev = top_node;
@@ -869,10 +882,8 @@ PlayerAct(void)
         entity_manager->looking_at_container = nullptr;
         
         bool blocked = false;
-        for (EntityIter at_move_p = GetEntitiesAt(move_p); IsValid(at_move_p); Next(&at_move_p))
+        for (Entity *e: GetEntitiesAt(move_p))
         {
-            Entity *e = at_move_p.entity;
-
             if (e->contact_trigger)
             {
                 ProcessTrigger(e, player);
@@ -943,12 +954,12 @@ CalculateVisibility(VisibilityGrid *grid, Entity *e, float radius)
         }
         else if (Length(e->p - p) <= radius)
         {
-            EntityIter hit_entities = TraceLine(e->p, p);
-            if (IsValid(hit_entities))
+            EntityArray hit_entities = TraceLine(e->p, p);
+            if (hit_entities.count)
             {
-                for (; IsValid(hit_entities); Next(&hit_entities))
+                for (size_t i = 0; i < hit_entities.count; i += 1)
                 {
-                    Entity *seen = hit_entities.entity;
+                    Entity *seen = hit_entities[i];
                     if (IsInRect(grid->bounds, seen->p))
                     {
                         V2i seen_rel_p = seen->p - grid->bounds.min;
@@ -961,11 +972,8 @@ CalculateVisibility(VisibilityGrid *grid, Entity *e, float radius)
             {
                 grid->tiles[y*w + x] = true;
                 SetSeenByPlayer(game_state->gen_tiles, p, true);
-                for (EntityIter on_tile = GetEntitiesAt(p);
-                     IsValid(on_tile);
-                     Next(&on_tile))
+                for (Entity *seen: GetEntitiesAt(p))
                 {
-                    Entity *seen = on_tile.entity;
                     MarkAsSeen(seen);
                 }
             }
@@ -990,27 +998,24 @@ IsVisible(VisibilityGrid *grid, V2i p)
 static inline void
 UpdateAndRenderEntities(void)
 {
-    if (entity_manager->turn_timer <= 0.0f)
+    int player_view_radius = 24;
+    Entity *player = entity_manager->player;
+    if (player)
     {
-        int player_view_radius = 24;
-        Entity *player = entity_manager->player;
-        if (player)
-        {
-            Rect2i grid_bounds = MakeRect2iCenterHalfDim(player->p, MakeV2i(player_view_radius));
-            entity_manager->player_visibility = PushVisibilityGrid(GetTempArena(), grid_bounds);
-            CalculateVisibility(&entity_manager->player_visibility, player, (float)player_view_radius);
-        }
+        Rect2i grid_bounds = MakeRect2iCenterHalfDim(player->p, MakeV2i(player_view_radius));
+        entity_manager->player_visibility = PushVisibilityGrid(GetTempArena(), grid_bounds);
+        CalculateVisibility(&entity_manager->player_visibility, player, (float)player_view_radius);
+    }
 
+    if (!entity_manager->block_simulation && entity_manager->turn_timer <= 0.0f)
+    {
         if (PlayerAct())
         {
             CalculateVisibility(&entity_manager->player_visibility, player, (float)player_view_radius);
-            // entity_manager->turn_timer += 0.10f;
+            entity_manager->turn_timer += 0.10f;
             for (EntityIter iter = IterateAllEntities(); IsValid(iter); Next(&iter))
             {
                 Entity *e = iter.entity;
-
-                // simulate entity after, to defer the unseeing one turn
-                CleanStaleReferences(&e->inventory);
 
                 if (e == player)
                 {
@@ -1022,6 +1027,43 @@ UpdateAndRenderEntities(void)
                 {
                     e->seen_by_player = false;
                 }
+
+                e->energy += e->speed;
+                while (e->energy > 100)
+                {
+                    e->energy -= 100;
+
+                    if (HasProperty(e, EntityProperty_Hostile))
+                    {
+                        V2i delta = e->p - player->p;
+                        int32_t dist_sq = LengthSq(delta);
+                        if (dist_sq < 12*12)
+                        {
+                            for (Entity *seen: TraceLine(e->p, player->p))
+                            {
+                                if (seen == player)
+                                {
+                                    if ((Abs(delta.x) <= 1) &&
+                                        (Abs(delta.y) <= 1))
+                                    {
+                                        DamageEntity(player, 1);
+                                    }
+                                    else
+                                    {
+                                        ScopedMemory crap(&entity_manager->arena);
+                                        Path path = FindPath(&entity_manager->arena, e->p, player->p);
+                                        if (path.length > 0)
+                                        {
+                                            MoveEntity(e, path.positions[0]);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    CleanStaleReferences(&e->inventory);
+                }
             }
         }
     }
@@ -1030,8 +1072,9 @@ UpdateAndRenderEntities(void)
         entity_manager->turn_timer -= platform->dt;
     }
 
+    entity_manager->block_simulation = false;
+
     Font *world_font = render_state->world_font;
-    Entity *player = entity_manager->player;
     if (player)
     {
         V2i render_tile_dim = MakeV2i(platform->render_w / world_font->glyph_w, platform->render_h / world_font->glyph_h);
@@ -1044,14 +1087,13 @@ UpdateAndRenderEntities(void)
     Rect2i viewport = MakeRect2iMinDim(render_state->camera_bottom_left, MakeV2i(viewport_w, viewport_h));
     render_state->viewport = viewport;
 
+    bool done_animations = true;
     for (int y = viewport.min.y; y <= viewport.max.y; y += 1)
     for (int x = viewport.min.x; x <= viewport.max.x; x += 1)
     {
         V2i p = MakeV2i(x, y);
-        for (EntityIter it = GetEntitiesAt(p); IsValid(it); Next(&it))
+        for (Entity *e: GetEntitiesAt(p))
         {
-            Entity *e = it.entity;
-
             Sprite sprite = e->sprites[e->sprite_index];
             if (e->open)
             {
@@ -1060,7 +1102,6 @@ UpdateAndRenderEntities(void)
                                               sprite.foreground.b / 2);
             }
 
-#if 0
             if (e->sprite_anim_timer >= e->sprite_anim_rate)
             {
                 e->sprite_anim_timer -= e->sprite_anim_rate;
@@ -1077,8 +1118,13 @@ UpdateAndRenderEntities(void)
             {
                 sprite.foreground = e->flash_color;
                 e->flash_timer -= platform->dt;
+                done_animations = false;
             }
-#endif
+
+            if (e->flash_timer <= 0.0f && HasProperty(e, EntityProperty_Dying))
+            {
+                KillEntity(e);
+            }
 
             if (HasProperty(e, EntityProperty_PlayerControlled))
             {
@@ -1108,6 +1154,11 @@ UpdateAndRenderEntities(void)
                 PushTile(layer, e->p, sprite);
             }
         }
+    }
+
+    if (!done_animations)
+    {
+        entity_manager->block_simulation = true;
     }
 
     if (entity_manager->looking_at_container)

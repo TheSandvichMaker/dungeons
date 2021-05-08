@@ -25,9 +25,7 @@ enum EntityPropertyKind
     EntityProperty_Unlockable,
     EntityProperty_Door,
     EntityProperty_Volatile,
-    EntityProperty_Martins,
-    EntityProperty_C,
-    EntityProperty_AngryDude,
+    EntityProperty_Hostile,
     EntityProperty_COUNT,
     EntityProperty_PAGECOUNT = (EntityProperty_COUNT + 63) / 64,
 };
@@ -146,6 +144,8 @@ struct EntityManager
 
     uint32_t entity_count;
 
+    bool block_simulation;
+
     Entity *player;
     Entity *looking_at_container;
     VisibilityGrid player_visibility;
@@ -254,17 +254,6 @@ static inline bool
 HasProperty(EntityPropertySet *set, EntityPropertyKind property)
 {
     bool result = !!(set->properties[property / 64] & (1ull << (property % 64)));
-    return result;
-}
-
-static inline EntityPropertySet
-AnyProperty(void)
-{
-    EntityPropertySet result = {};
-    for (size_t i = 0; i = EntityProperty_COUNT / 64; ++i)
-    {
-        result.properties[i] = (uint64_t)-1;
-    }
     return result;
 }
 

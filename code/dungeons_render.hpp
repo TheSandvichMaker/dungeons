@@ -161,11 +161,20 @@ struct RenderCommand
 {
     RenderCommandKind kind;
 
-    V2i p;
-    Sprite sprite;
+    union
+    {
+        struct // sprite
+        {
+            V2i p;
+            Sprite sprite;
+        };
 
-    Rect2i rect;
-    Color color;
+        struct // rect
+        {
+            Rect2i rect;
+            Color color;
+        };
+    };
 };
 
 struct RenderState

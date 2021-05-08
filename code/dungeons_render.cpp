@@ -447,6 +447,7 @@ PLATFORM_JOB(TiledRenderJob)
     }
 }
 
+#if 0
 static inline void
 MergeSortInternal(uint32_t count, uint32_t *a, uint32_t *b)
 {
@@ -490,6 +491,7 @@ MergeSort(uint32_t count, uint32_t *a, uint32_t *b)
     CopyArray(count, a, b);
     MergeSortInternal(count, a, b);
 }
+#endif
 
 static inline void
 RadixSort(uint32_t count, uint32_t *data, uint32_t *temp)

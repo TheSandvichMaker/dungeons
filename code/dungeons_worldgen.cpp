@@ -479,8 +479,11 @@ PLATFORM_JOB(DoWorldGen)
     leet_gold->name = StringLiteral("L33T G0LD");
     AddToInventory(chest, leet_gold);
 
-    Entity *angry_orc = AddEntity(StringLiteral("Angry Orc"), {}, MakeSprite('O', MakeColor(255, 0, 0)));
-    AddToInventory(chest, angry_orc);
+    Entity *angry_orc = AddEntity(StringLiteral("Angry Orc"), player_spawn_p - MakeV2i(3, 3), MakeSprite('O', MakeColor(255, 0, 0)));
+    angry_orc->health = 3;
+    angry_orc->speed = 125;
+    SetProperty(angry_orc, EntityProperty_Blocking);
+    SetProperty(angry_orc, EntityProperty_Hostile);
 
     Entity *key = AddEntity(StringLiteral("Shiny Key"), {}, MakeSprite(Glyph_Male, MakeColor(255, 200, 0)));
     AddToInventory(chest, key);

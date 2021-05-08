@@ -236,7 +236,10 @@ PushArrayContainer(Arena *arena, size_t capacity)
 {
     Array<T> result = {};
     result.capacity = capacity;
-    result.data = PushArray(arena, capacity, T);
+    if (result.capacity)
+    {
+        result.data = PushArray(arena, capacity, T);
+    }
     return result;
 }
 
