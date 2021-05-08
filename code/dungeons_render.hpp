@@ -125,11 +125,21 @@ enum WallSegment
 
 enum RenderLayer
 {
+    Layer_Ground,
     Layer_Floor,
     Layer_World,
     Layer_Ui,
     Layer_COUNT,
 };
+
+static inline bool
+LayerUsesCamera(RenderLayer layer)
+{
+    if (layer == Layer_Ground) return true;
+    if (layer == Layer_Floor) return true;
+    if (layer == Layer_World) return true;
+    return false;
+}
 
 enum RenderCommandKind
 {

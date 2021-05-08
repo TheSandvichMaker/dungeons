@@ -361,6 +361,7 @@ BeginRender(void)
     Arena *arena = GetTempArena();
     render_state->arena = arena;
 
+    render_state->fonts[Layer_Ground] = render_state->world_font;
     render_state->fonts[Layer_Floor] = render_state->world_font;
     render_state->fonts[Layer_World] = render_state->world_font;
     render_state->fonts[Layer_Ui] = render_state->ui_font;
@@ -405,12 +406,7 @@ PLATFORM_JOB(TiledRenderJob)
                 V2i p = MakeV2i(command->p.x, command->p.y);
                 Sprite *sprite = &command->sprite;
 
-                if (sprite->glyph == '@')
-                {
-                    int y = 0; (void)y;
-                }
-
-                if (at->layer == Layer_World || at->layer == Layer_Floor)
+                if (LayerUsesCamera((RenderLayer)at->layer))
                 {
                     p -= render_state->camera_bottom_left;
                 }
@@ -430,7 +426,7 @@ PLATFORM_JOB(TiledRenderJob)
             {
                 Rect2i rect = command->rect;
 
-                if (at->layer == Layer_World || at->layer == Layer_Floor)
+                if (LayerUsesCamera((RenderLayer)at->layer))
                 {
                     rect.min -= render_state->camera_bottom_left;
                     rect.max -= render_state->camera_bottom_left;

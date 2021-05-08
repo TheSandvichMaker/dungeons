@@ -159,7 +159,7 @@ AppUpdateAndRender(Platform *platform_)
                     {
                         sprite = MakeSprite('=', LinearToSRGB(perlin*perlin*visibility_mod*MakeColorF(0.85f, 0.45f, 0.0f)));
                     }
-                    PushTile(Layer_Floor, MakeV2i(x, y), sprite);
+                    PushTile(Layer_Ground, MakeV2i(x, y), sprite);
                 }
                 else
                 {
@@ -171,7 +171,7 @@ AppUpdateAndRender(Platform *platform_)
                         color *= 3.0f;
                     }
                     Color foreground = LinearToSRGB(color);
-                    PushTile(Layer_Floor, MakeV2i(x, y), MakeSprite(Glyph_Tone25, foreground));
+                    PushTile(Layer_Ground, MakeV2i(x, y), MakeSprite(Glyph_Tone25, foreground));
                 }
             }
         }

@@ -1009,14 +1009,19 @@ UpdateAndRenderEntities(void)
             {
                 Entity *e = iter.entity;
 
+                // simulate entity after, to defer the unseeing one turn
+                CleanStaleReferences(&e->inventory);
+
+                if (e == player)
+                {
+                    continue;
+                }
+
                 // see if the player lost track of us
                 if (!AreEqual(e->p, e->seen_p) || HasProperty(e, EntityProperty_Volatile))
                 {
                     e->seen_by_player = false;
                 }
-
-                // simulate entity after, to defer the unseeing one turn
-                CleanStaleReferences(&e->inventory);
             }
         }
     }
@@ -1095,7 +1100,12 @@ UpdateAndRenderEntities(void)
                     sprite.background.g = sprite.background.g / 2;
                     sprite.background.b = sprite.background.b / 2;
                 }
-                PushTile(Layer_World, e->p, sprite);
+                RenderLayer layer = Layer_World;
+                if (!HasProperty(e, EntityProperty_Blocking))
+                {
+                    layer = Layer_Floor;
+                }
+                PushTile(layer, e->p, sprite);
             }
         }
     }
