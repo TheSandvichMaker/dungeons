@@ -24,7 +24,6 @@ enum EntityPropertyKind
     EntityProperty_Invulnerable,
     EntityProperty_Unlockable,
     EntityProperty_Door,
-    EntityProperty_Item,
     EntityProperty_Martins,
     EntityProperty_C,
     EntityProperty_AngryDude,
@@ -83,6 +82,7 @@ enum TriggerKind
     Trigger_None,
     Trigger_Unblock,
     Trigger_Container,
+    Trigger_PickUp,
     Trigger_COUNT,
 };
 
@@ -100,10 +100,11 @@ struct Entity
 
     String name;
 
-    TriggerKind trigger;
+    TriggerKind contact_trigger;
 
     EntityHandle required_key;
     bool open;
+    bool seen_by_player;
 
     int32_t amount;
 
@@ -126,19 +127,10 @@ struct Entity
     uint64_t properties[(EntityProperty_COUNT + 63) / 64];
 };
 
-enum ActionKind
+struct VisibilityGrid
 {
-    Action_None,
-
-    Action_FollowPath,
-
-    Action_COUNT,
-};
-
-struct Action
-{
-    ActionKind kind;
-    Path path;
+    Rect2i bounds;
+    bool *tiles;
 };
 
 struct EntityManager
@@ -152,9 +144,11 @@ struct EntityManager
 
     Entity *player;
     Entity *looking_at_container;
+    VisibilityGrid player_visibility;
+
     int container_selection_index;
 
-    EntityNode *first_free_entity_handle_node;
+    EntityNode *first_free_entity_node;
 
     Entity *first_free_entity;
     Entity entities[MAX_ENTITY_COUNT];

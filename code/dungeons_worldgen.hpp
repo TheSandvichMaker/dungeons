@@ -39,8 +39,35 @@ struct GenTiles
 
     int w, h;
     GenTile *data;
-    int *times_set;
+    bool *seen_by_player;
 };
+
+static inline bool
+SeenByPlayer(GenTiles *tiles, V2i p)
+{
+    if (tiles->data &&
+        (p.x >= 0) && 
+        (p.y >= 0) &&
+        (p.x < tiles->w) &&
+        (p.y < tiles->h))
+    {
+        return tiles->seen_by_player[p.y*tiles->w + p.x];
+    }
+    return false;
+}
+
+static inline void
+SetSeenByPlayer(GenTiles *tiles, V2i p, bool value = true)
+{
+    if (tiles->data &&
+        (p.x >= 0) && 
+        (p.y >= 0) &&
+        (p.x < tiles->w) &&
+        (p.y < tiles->h))
+    {
+        tiles->seen_by_player[p.y*tiles->w + p.x] = value;
+    }
+}
 
 static inline GenTile
 GetTile(GenTiles *tiles, V2i p)
@@ -66,15 +93,6 @@ SetTile(GenTiles *tiles, V2i p, GenTile value)
            (p.y >= 0) &&
            (p.x < tiles->w) &&
            (p.y < tiles->h));
-    GenTile current = tiles->data[p.y*tiles->w + p.x];
-    if (current == value)
-    {
-        tiles->times_set[p.y*tiles->w + p.x] += 1;
-    }
-    else
-    {
-        tiles->times_set[p.y*tiles->w + p.x] = 1;
-    }
     tiles->data[p.y*tiles->w + p.x] = value;
 }
 

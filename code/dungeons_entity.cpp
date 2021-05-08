@@ -4,11 +4,11 @@ NewEntityNode(Entity *entity)
     EntityNode *result = nullptr;
     if (entity)
     {
-        if (!entity_manager->first_free_entity_handle_node)
+        if (!entity_manager->first_free_entity_node)
         {
-            entity_manager->first_free_entity_handle_node = PushStructNoClear(&entity_manager->arena, EntityNode);
+            entity_manager->first_free_entity_node = PushStructNoClear(&entity_manager->arena, EntityNode);
         }
-        result = SllStackPop(entity_manager->first_free_entity_handle_node);
+        result = SllStackPop(entity_manager->first_free_entity_node);
         result->next = nullptr;
         result->handle = entity->handle;
     }
@@ -22,7 +22,7 @@ NewEntityNode(Entity *entity)
 static inline void
 FreeEntityNode(EntityNode *node)
 {
-    SllStackPush(entity_manager->first_free_entity_handle_node, node);
+    SllStackPush(entity_manager->first_free_entity_node, node);
 }
 
 static inline bool
@@ -100,9 +100,9 @@ MoveEntity(Entity *e, V2i p)
 }
 
 static inline void
-SetTrigger(Entity *e, TriggerKind kind)
+SetContactTrigger(Entity *e, TriggerKind kind)
 {
-    e->trigger = kind;
+    e->contact_trigger = kind;
 }
 
 static inline Entity *
@@ -157,7 +157,7 @@ AddDoor(V2i p)
 {
     Entity *e = AddEntity(StringLiteral("Door"), p, MakeSprite('#', MakeColor(255, 127, 0)));
     SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Door|EntityProperty_Unlockable|EntityProperty_Blocking);
-    SetTrigger(e, Trigger_Unblock);
+    SetContactTrigger(e, Trigger_Unblock);
     return e;
 }
 
@@ -183,7 +183,7 @@ AddGold(V2i p, int amount)
     e->sprites[e->sprite_count++] = MakeSprite('g', MakeColor(255, 255, 0));
     e->sprites[e->sprite_count++] = MakeSprite('g', MakeColor(255, 255, 127));
     e->sprites[e->sprite_count++] = MakeSprite('g', MakeColor(255, 255, 255));
-    SetProperty(e, EntityProperty_Item);
+    SetContactTrigger(e, Trigger_PickUp);
     return e;
 }
 
@@ -192,7 +192,7 @@ AddChest(V2i p)
 {
     Entity *e = AddEntity(StringLiteral("Chest"), p, MakeSprite('M', MakeColor(127, 255, 0)));
     SetProperties(e, EntityProperty_Unlockable|EntityProperty_Invulnerable|EntityProperty_Blocking);
-    SetTrigger(e, Trigger_Container);
+    SetContactTrigger(e, Trigger_Container);
     return e;
 }
 
@@ -633,7 +633,7 @@ static inline void
 CleanStaleReferences(EntityList *list)
 {
     // NOTE: Because pulling the list already filters out invalid handles,
-    // we can just rely on that. Cheeky. Performant? Maybe not. Whatever.
+    // we can just rely on that. Cheeky. Performant? Maybe not. Whatever. @Speed
     EntityArray array = Pull(list);
     Place(list, array);
 }
@@ -761,7 +761,7 @@ ProcessTrigger(Entity *e, Entity *other)
         }
     }
 
-    switch (e->trigger)
+    switch (e->contact_trigger)
     {
         case Trigger_Unblock:
         {
@@ -771,6 +771,11 @@ ProcessTrigger(Entity *e, Entity *other)
         case Trigger_Container:
         {
             entity_manager->looking_at_container = e;
+        } break;
+
+        case Trigger_PickUp:
+        {
+            AddToInventory(other, e);
         } break;
     }
 }
@@ -831,7 +836,7 @@ PlayerAct(void)
         {
             Entity *e = at_move_p.entity;
 
-            if (e->trigger)
+            if (e->contact_trigger)
             {
                 ProcessTrigger(e, player);
             }
@@ -848,11 +853,6 @@ PlayerAct(void)
                     DamageEntity(e, 1);
                     return true;
                 }
-            }
-            else if (HasProperty(e, EntityProperty_Item))
-            {
-                AddToInventory(player, e);
-                result = true;
             }
         }
 
@@ -871,11 +871,65 @@ PlayerAct(void)
     return result;
 }
 
+static inline VisibilityGrid
+PushVisibilityGrid(Arena *arena, Rect2i bounds)
+{
+    VisibilityGrid result = {};
+    result.bounds = bounds;
+
+    int width = GetWidth(bounds);
+    int height = GetHeight(bounds);
+    result.tiles = PushArray(arena, width*height, bool);
+
+    return result;
+}
+
+static inline void
+CalculateVisibility(VisibilityGrid *grid, Entity *e)
+{
+    int w = GetWidth(grid->bounds);
+    int h = GetHeight(grid->bounds);
+    for (int y = 0; y <= h; y += 1)
+    for (int x = 0; x <= w; x += 1)
+    {
+        V2i p = MakeV2i(x + grid->bounds.min.x, y + grid->bounds.min.y);
+        EntityIter hit_entities = TraceLine(e->p, p);
+        if (IsValid(hit_entities))
+        {
+            grid->tiles[y*w + x] = true;
+            for (; IsValid(hit_entities); Next(&hit_entities))
+            {
+                Entity *seen = hit_entities.entity;
+                seen->seen_by_player = true;
+            }
+        }
+        else
+        {
+            grid->tiles[y*w + x] = false;
+            SetSeenByPlayer(game_state->gen_tiles, p, true);
+            for (EntityIter on_tile = GetEntitiesAt(p);
+                 IsValid(on_tile);
+                 Next(&on_tile))
+            {
+                Entity *seen = on_tile.entity;
+                seen->seen_by_player = true;
+            }
+        }
+    }
+}
+
 static inline void
 UpdateAndRenderEntities(void)
 {
     if (entity_manager->turn_timer <= 0.0f)
     {
+        if (entity_manager->player)
+        {
+            int player_view_radius = 16;
+            entity_manager->player_visibility = PushVisibilityGrid(GetTempArena(), MakeRect2iCenterHalfDim(entity_manager->player->p, MakeV2i(player_view_radius)));
+            CalculateVisibility(&entity_manager->player_visibility, entity_manager->player);
+        }
+
         if (PlayerAct())
         {
             // entity_manager->turn_timer += 0.10f;
@@ -977,7 +1031,7 @@ UpdateAndRenderEntities(void)
             KillEntity(e);
         }
 
-        if (HasProperty(e, EntityProperty_InWorld))
+        if (HasProperty(e, EntityProperty_InWorld) && e->seen_by_player)
         {
             PushTile(Layer_World, e->p, sprite);
         }
@@ -997,20 +1051,5 @@ UpdateAndRenderEntities(void)
         {
             DrawEntityList(&container->inventory, MakeRect2iMinDim(2, 2, 24, 16), entity_manager->container_selection_index);
         }
-    }
-}
-
-static inline void
-AddRoom(Rect2i rect)
-{
-    for (int x = rect.min.x; x <= rect.max.x; ++x)
-    {
-        AddWall(MakeV2i(x, rect.min.y));
-        AddWall(MakeV2i(x, rect.max.y));
-    }
-    for (int y = rect.min.y + 1; y <= rect.max.y - 1; ++y)
-    {
-        AddWall(MakeV2i(rect.min.x, y));
-        AddWall(MakeV2i(rect.max.x, y));
     }
 }

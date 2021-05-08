@@ -106,7 +106,7 @@ PLATFORM_JOB(DoWorldGen)
 
     Arena *arena = &tiles->arena;
     tiles->data = PushArray(arena, tiles->w*tiles->h, GenTile);
-    tiles->times_set = PushArray(arena, tiles->w*tiles->h, int);
+    tiles->seen_by_player = PushArray(arena, tiles->w*tiles->h, bool);
 
     Rect2i map_bounds = MakeRect2iMinDim(0, 0, tiles->w % 2, tiles->h % 2);
 
@@ -443,7 +443,7 @@ PLATFORM_JOB(DoWorldGen)
     AddPlayer(player_spawn_p);
 
     Entity *chest_key = AddEntity(StringLiteral("Chest Key"), player_spawn_p - MakeV2i(2, 0), MakeSprite(Glyph_Male, MakeColor(125, 255, 0)));
-    SetProperty(chest_key, EntityProperty_Item);
+    SetContactTrigger(chest_key, Trigger_PickUp);
     
     Entity *chest = AddChest(player_spawn_p + MakeV2i(2, 0));
     LockWithKey(chest, chest_key);
