@@ -91,7 +91,7 @@ MoveEntity(Entity *e, V2i p)
          it;
          it = it->next_on_tile)
     {
-        if (HasProperty(it, EntityProperty_Blocking))
+        if (HasProperty(it, EntityProperty_BlockMovement))
         {
             return false;
         }
@@ -156,7 +156,7 @@ static inline Entity *
 AddWall(V2i p)
 {
     Entity *e = AddEntity(StringLiteral("Wall"), p, MakeSprite(Glyph_Tone50, MakeColor(110, 165, 100)));
-    SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Blocking);
+    SetProperties(e, EntityProperty_Invulnerable|EntityProperty_BlockMovement|EntityProperty_BlockSight);
     return e;
 }
 
@@ -164,7 +164,7 @@ static inline Entity *
 AddDoor(V2i p)
 {
     Entity *e = AddEntity(StringLiteral("Door"), p, MakeSprite('#', MakeColor(255, 127, 0)));
-    SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Door|EntityProperty_Unlockable|EntityProperty_Blocking);
+    SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Door|EntityProperty_Unlockable|EntityProperty_BlockMovement|EntityProperty_BlockSight);
     SetContactTrigger(e, Trigger_Unblock);
     return e;
 }
@@ -173,7 +173,7 @@ static inline Entity *
 AddPlayer(V2i p)
 {
     Entity *e = AddEntity(StringLiteral("Player"), p, MakeSprite('@', MakeColor(255, 255, 0)));
-    SetProperties(e, EntityProperty_PlayerControlled|EntityProperty_Blocking);
+    SetProperties(e, EntityProperty_PlayerControlled|EntityProperty_BlockMovement|EntityProperty_BlockSight);
 
     e->health = 100;
 
@@ -201,7 +201,7 @@ static inline Entity *
 AddChest(V2i p)
 {
     Entity *e = AddEntity(StringLiteral("Chest"), p, MakeSprite('M', MakeColor(127, 255, 0)));
-    SetProperties(e, EntityProperty_Unlockable|EntityProperty_Invulnerable|EntityProperty_Blocking);
+    SetProperties(e, EntityProperty_Unlockable|EntityProperty_Invulnerable|EntityProperty_BlockMovement);
     SetContactTrigger(e, Trigger_Container);
     return e;
 }
@@ -368,7 +368,7 @@ GetEntitiesAt(V2i p, EntityPropertySet filter = {})
 static inline bool
 TileBlocked(V2i p)
 {
-    EntityArray arr = GetEntitiesAt(p, MakeSet(EntityProperty_Blocking));
+    EntityArray arr = GetEntitiesAt(p, MakeSet(EntityProperty_BlockMovement));
     return arr.count > 0;
 }
 
@@ -420,8 +420,15 @@ DamageEntity(Entity *e, int amount)
     return false;
 }
 
+typedef uint32_t RaycastFlags;
+enum
+{
+    Raycast_TestMovement = 0x1,
+    Raycast_TestSight = 0x2,
+};
+
 static inline EntityArray
-TraceLine(V2i start, V2i end, Sprite sprite = MakeSprite(0))
+Raycast(V2i start, V2i end, RaycastFlags flags = Raycast_TestMovement)
 {
     EntityArray result = {};
 
@@ -446,16 +453,14 @@ TraceLine(V2i start, V2i end, Sprite sprite = MakeSprite(0))
 
         if (!AreEqual(p, start))
         {
-            EntityArray on_tile = GetEntitiesAt(p, MakeSet(EntityProperty_Blocking));
+            EntityPropertySet filter = {};
+            if (flags & Raycast_TestMovement) filter |= EntityProperty_BlockMovement;
+            if (flags & Raycast_TestSight   ) filter |= EntityProperty_BlockSight;
+            EntityArray on_tile = GetEntitiesAt(p, filter);
             if (on_tile.count)
             {
                 result = on_tile;
                 break;
-            }
-
-            if (sprite.glyph)
-            {
-                PushTile(Layer_World, p, sprite);
             }
         }
 
@@ -732,7 +737,7 @@ TryOpen(Entity *e, Entity *other)
         e->open = true;
         if (HasProperty(e, EntityProperty_Door))
         {
-            UnsetProperty(e, EntityProperty_Blocking);
+            UnsetProperty(e, EntityProperty_BlockMovement);
         }
     }
 
@@ -814,7 +819,7 @@ ProcessTrigger(Entity *e, Entity *other)
     {
         case Trigger_Unblock:
         {
-            UnsetProperty(e, EntityProperty_Blocking);
+            UnsetProperty(e, EntityProperty_BlockMovement);
         } break;
 
         case Trigger_Container:
@@ -889,7 +894,7 @@ PlayerAct(void)
                 ProcessTrigger(e, player);
             }
 
-            if (HasProperty(e, EntityProperty_Blocking))
+            if (HasProperty(e, EntityProperty_BlockMovement))
             {
                 if (HasProperty(e, EntityProperty_Invulnerable))
                 {
@@ -954,7 +959,7 @@ CalculateVisibility(VisibilityGrid *grid, Entity *e, float radius)
         }
         else if (Length(e->p - p) <= radius)
         {
-            EntityArray hit_entities = TraceLine(e->p, p);
+            EntityArray hit_entities = Raycast(e->p, p, Raycast_TestSight);
             if (hit_entities.count)
             {
                 for (size_t i = 0; i < hit_entities.count; i += 1)
@@ -1012,7 +1017,6 @@ UpdateAndRenderEntities(void)
         if (PlayerAct())
         {
             CalculateVisibility(&entity_manager->player_visibility, player, (float)player_view_radius);
-            entity_manager->turn_timer += 0.10f;
             for (EntityIter iter = IterateAllEntities(); IsValid(iter); Next(&iter))
             {
                 Entity *e = iter.entity;
@@ -1039,7 +1043,7 @@ UpdateAndRenderEntities(void)
                         int32_t dist_sq = LengthSq(delta);
                         if (dist_sq < 12*12)
                         {
-                            for (Entity *seen: TraceLine(e->p, player->p))
+                            for (Entity *seen: Raycast(e->p, player->p, Raycast_TestSight))
                             {
                                 if (seen == player)
                                 {
@@ -1061,8 +1065,6 @@ UpdateAndRenderEntities(void)
                             }
                         }
                     }
-
-                    CleanStaleReferences(&e->inventory);
                 }
             }
         }
@@ -1147,12 +1149,14 @@ UpdateAndRenderEntities(void)
                     sprite.background.b = sprite.background.b / 2;
                 }
                 RenderLayer layer = Layer_World;
-                if (!HasProperty(e, EntityProperty_Blocking))
+                if (!HasProperty(e, EntityProperty_BlockMovement))
                 {
                     layer = Layer_Floor;
                 }
                 PushTile(layer, e->p, sprite);
             }
+
+            CleanStaleReferences(&e->inventory);
         }
     }
 
