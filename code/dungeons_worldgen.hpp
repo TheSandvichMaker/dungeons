@@ -5,6 +5,8 @@ struct GenRoom
 {
     GenRoom *next;
     Rect2i rect;
+
+    EntityList associated_entities;
 };
 
 enum GenTile
@@ -40,16 +42,32 @@ struct GenTiles
     int w, h;
     GenTile *data;
     bool *seen_by_player;
+    GenRoom **associated_rooms;
 };
+
+static inline bool
+InBounds(GenTiles *tiles, V2i p)
+{
+    if ((p.x >= 0) && 
+        (p.y >= 0) &&
+        (p.x < tiles->w) &&
+        (p.y < tiles->h))
+    {
+        return true;
+    }
+    return false;
+}
+
+static inline int
+IndexP(GenTiles *tiles, V2i p)
+{
+    return p.y*tiles->w + p.x;
+}
 
 static inline bool
 SeenByPlayer(GenTiles *tiles, V2i p)
 {
-    if (tiles->data &&
-        (p.x >= 0) && 
-        (p.y >= 0) &&
-        (p.x < tiles->w) &&
-        (p.y < tiles->h))
+    if (InBounds(tiles, p))
     {
         return tiles->seen_by_player[p.y*tiles->w + p.x];
     }
@@ -59,11 +77,7 @@ SeenByPlayer(GenTiles *tiles, V2i p)
 static inline void
 SetSeenByPlayer(GenTiles *tiles, V2i p, bool value = true)
 {
-    if (tiles->data &&
-        (p.x >= 0) && 
-        (p.y >= 0) &&
-        (p.x < tiles->w) &&
-        (p.y < tiles->h))
+    if (InBounds(tiles, p))
     {
         tiles->seen_by_player[p.y*tiles->w + p.x] = value;
     }
@@ -72,11 +86,7 @@ SetSeenByPlayer(GenTiles *tiles, V2i p, bool value = true)
 static inline GenTile
 GetTile(GenTiles *tiles, V2i p)
 {
-    if (tiles->data &&
-        (p.x >= 0) && 
-        (p.y >= 0) &&
-        (p.x < tiles->w) &&
-        (p.y < tiles->h))
+    if (tiles->data && InBounds(tiles, p))
     {
         return tiles->data[p.y*tiles->w + p.x];
     }
@@ -89,10 +99,7 @@ GetTile(GenTiles *tiles, V2i p)
 static inline void
 SetTile(GenTiles *tiles, V2i p, GenTile value)
 {
-    Assert((p.x >= 0) && 
-           (p.y >= 0) &&
-           (p.x < tiles->w) &&
-           (p.y < tiles->h));
+    Assert(InBounds(tiles, p));
     tiles->data[p.y*tiles->w + p.x] = value;
 }
 

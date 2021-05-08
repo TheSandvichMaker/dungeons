@@ -94,11 +94,11 @@ AppUpdateAndRender(Platform *platform_)
 
     if (!platform->app_initialized)
     {
-        // game_state->tileset    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("tileset.bmp"), 16, 16);
-        game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font16x16_alt1.bmp"), 16, 16);
-        game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, StringLiteral("font8x16.bmp"), 8, 16);
+        // game_state->tileset    = LoadFontFromDisk(&game_state->transient_arena, "tileset.bmp"_str, 16, 16);
+        game_state->world_font = LoadFontFromDisk(&game_state->transient_arena, "font16x16_alt1.bmp"_str, 16, 16);
+        game_state->ui_font    = LoadFontFromDisk(&game_state->transient_arena, "font8x16.bmp"_str, 8, 16);
         InitializeRenderState(&game_state->transient_arena, &platform->backbuffer, &game_state->world_font, &game_state->ui_font);
-        InitializeInputBindings();
+        InitializeInputBindings(&game_state->transient_arena);
 
         game_state->gen_tiles = BeginGenerateWorld(0xDEADBEFC);
 
@@ -106,6 +106,11 @@ AppUpdateAndRender(Platform *platform_)
     }
 
     HandleInput();
+
+    if (Pressed(input->f_keys[1]))
+    {
+        game_state->debug_fullbright = !game_state->debug_fullbright;
+    }
 
     if (!game_state->world_generated)
     {
@@ -137,17 +142,10 @@ AppUpdateAndRender(Platform *platform_)
         {
             V2i p = MakeV2i(x, y);
             GenTile tile = GetTile(game_state->gen_tiles, p);
-            if (SeenByPlayer(game_state->gen_tiles, MakeV2i(x, y)))
+            if (game_state->debug_fullbright || SeenByPlayer(game_state->gen_tiles, MakeV2i(x, y)))
             {
                 VisibilityGrid *grid = &entity_manager->player_visibility;
-                bool currently_visible = false;
-                if (IsInRect(grid->bounds, p))
-                {
-                    int w = GetWidth(grid->bounds);
-                    int rel_x = p.x - grid->bounds.min.x;
-                    int rel_y = p.y - grid->bounds.min.y;
-                    currently_visible = grid->tiles[rel_y*w + rel_x];
-                }
+                bool currently_visible = game_state->debug_fullbright || IsVisible(grid, p);
                 float visibility_mod = currently_visible ? 1.0f : 0.5f;
                 if (tile == GenTile_Room)
                 {

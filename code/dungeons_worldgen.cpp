@@ -107,6 +107,7 @@ PLATFORM_JOB(DoWorldGen)
     Arena *arena = &tiles->arena;
     tiles->data = PushArray(arena, tiles->w*tiles->h, GenTile);
     tiles->seen_by_player = PushArray(arena, tiles->w*tiles->h, bool);
+    tiles->associated_rooms = PushArray(arena, tiles->w*tiles->h, GenRoom *);
 
     Rect2i map_bounds = MakeRect2iMinDim(0, 0, tiles->w % 2, tiles->h % 2);
 
@@ -149,13 +150,29 @@ PLATFORM_JOB(DoWorldGen)
 
         if (!overlap)
         {
+            GenRoom *room = &tiles->rooms[tiles->room_count++];
+            room->rect = room_rect;
+
             for (int y = room_rect.min.y; y < room_rect.max.y; ++y)
             for (int x = room_rect.min.x; x < room_rect.max.x; ++x)
             {
-                tiles->data[y*tiles->w + x] = GenTile_Room;
+                V2i p = MakeV2i(x, y);
+                SetTile(tiles, p, GenTile_Room);
+                tiles->associated_rooms[IndexP(tiles, p)] = room;
             }
-            GenRoom *room = &tiles->rooms[tiles->room_count++];
-            room->rect = room_rect;
+
+            bool pillars = true; // (RandomChoice(&entropy, 10) == 0);
+            if (pillars)
+            {
+                int room_w = GetWidth(room_rect);
+                int room_h = GetHeight(room_rect);
+                int x_offset = room_w / 4;
+                int y_offset = room_h / 4;
+                SetTile(tiles, Corner00(room_rect) + MakeV2i( x_offset,  y_offset), GenTile_Wall);
+                SetTile(tiles, Corner10(room_rect) + MakeV2i(-x_offset,  y_offset), GenTile_Wall);
+                SetTile(tiles, Corner01(room_rect) + MakeV2i( x_offset, -y_offset), GenTile_Wall);
+                SetTile(tiles, Corner11(room_rect) + MakeV2i(-x_offset, -y_offset), GenTile_Wall);
+            }
         }
     }
 
@@ -308,6 +325,7 @@ PLATFORM_JOB(DoWorldGen)
                 if (door_connects)
                 {
                     SetTile(tiles, option, GenTile_Door);
+                    tiles->associated_rooms[IndexP(tiles, option)] = room;
                     break;
                 }
             }
@@ -421,20 +439,28 @@ PLATFORM_JOB(DoWorldGen)
         V2i p = MakeV2i(x, y);
         GenTile tile = GetTile(tiles, p);
 
+        Entity *e = nullptr;
         if (tile == GenTile_Wall)
         {
-            AddWall(p);
+            e = AddWall(p);
+        }
+        else if (tile == GenTile_RoomWall)
+        {
+            e = AddWall(p);
+            e->sprites[0] = MakeSprite(Glyph_Solid, MakeColor(196, 196, 196));
+        }
+        else if (tile == GenTile_Door)
+        {
+            e = AddDoor(p);
         }
 
-        if (tile == GenTile_RoomWall)
+        if (e)
         {
-            Entity *wall = AddWall(p);
-            wall->sprites[0] = MakeSprite(Glyph_Solid, MakeColor(196, 196, 196));
-        }
-
-        if (tile == GenTile_Door)
-        {
-            AddDoor(p);
+            GenRoom *room = tiles->associated_rooms[IndexP(tiles, p)];
+            if (room)
+            {
+                PushToList(arena, &room->associated_entities, e);
+            }
         }
     }
 
@@ -459,10 +485,15 @@ PLATFORM_JOB(DoWorldGen)
     Entity *key = AddEntity(StringLiteral("Shiny Key"), {}, MakeSprite(Glyph_Male, MakeColor(255, 200, 0)));
     AddToInventory(chest, key);
 
-    Entity *door = FindClosestEntity(chest->p, EntityProperty_Door);
-    if (door)
+    for (EntityNode *node = starting_room->associated_entities.first;
+         node;
+         node = node->next)
     {
-        LockWithKey(door, key);
+        Entity *e = EntityFromHandle(node->handle);
+        if (e && HasProperty(e, EntityProperty_Door))
+        {
+            LockWithKey(e, key);
+        }
     }
 
     tiles->complete = true;

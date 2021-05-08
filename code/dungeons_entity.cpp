@@ -1,4 +1,12 @@
 static inline EntityNode *
+PushEntityNode(Arena *arena, Entity *e)
+{
+    EntityNode *result = PushStruct(arena, EntityNode);
+    result->handle = e->handle;
+    return result;
+}
+
+static inline EntityNode *
 NewEntityNode(Entity *entity)
 {
     EntityNode *result = nullptr;
@@ -639,6 +647,20 @@ CleanStaleReferences(EntityList *list)
 }
 
 static inline void
+PushToList(Arena *arena, EntityList *list, Entity *e)
+{
+    EntityNode *node = PushEntityNode(arena, e);
+    SllQueuePush(list->first, list->last, node);
+}
+
+static inline void
+AddToList(EntityList *list, Entity *e)
+{
+    EntityNode *node = NewEntityNode(e);
+    SllQueuePush(list->first, list->last, node);
+}
+
+static inline void
 AddToInventory(Entity *e, Entity *item)
 {
     RemoveEntityFromGrid(item);
@@ -655,11 +677,18 @@ LockWithKey(Entity *e, Entity *key)
     e->required_key = key->handle;
     e->open = false;
     SetProperty(e, EntityProperty_Unlockable);
+
+    key->uses += 1;
 }
 
 static inline bool
 TryOpen(Entity *e, Entity *other)
 {
+    if (e->open)
+    {
+        return true;
+    }
+
     bool open = false;
     if (e->required_key == NullEntityHandle())
     {
@@ -672,7 +701,14 @@ TryOpen(Entity *e, Entity *other)
             if (item->handle == e->required_key)
             {
                 Entity *key = EntityFromHandle(item->handle);
-                KillEntity(key);
+                if (key->uses > 0)
+                {
+                    key->uses -= 1;
+                    if (key->uses <= 0)
+                    {
+                        KillEntity(key);
+                    }
+                }
                 open = true;
             }
         }
@@ -811,6 +847,7 @@ PlayerAct(void)
     if (entity_manager->looking_at_container)
     {
         InteractWithContainer(player, entity_manager->looking_at_container);
+        CleanStaleReferences(&player->inventory);
         return false;
     }
 
@@ -885,6 +922,13 @@ PushVisibilityGrid(Arena *arena, Rect2i bounds)
 }
 
 static inline void
+MarkAsSeen(Entity *e)
+{
+    e->seen_by_player = true;
+    e->seen_p = e->p;
+}
+
+static inline void
 CalculateVisibility(VisibilityGrid *grid, Entity *e, float radius)
 {
     int w = GetWidth(grid->bounds);
@@ -893,7 +937,11 @@ CalculateVisibility(VisibilityGrid *grid, Entity *e, float radius)
     for (int x = 0; x <= w; x += 1)
     {
         V2i p = MakeV2i(x + grid->bounds.min.x, y + grid->bounds.min.y);
-        if (Length(e->p - p) <= radius)
+        if (AreEqual(p, e->p))
+        {
+            grid->tiles[y*w + x] = true;
+        }
+        else if (Length(e->p - p) <= radius)
         {
             EntityIter hit_entities = TraceLine(e->p, p);
             if (IsValid(hit_entities))
@@ -906,7 +954,7 @@ CalculateVisibility(VisibilityGrid *grid, Entity *e, float radius)
                         V2i seen_rel_p = seen->p - grid->bounds.min;
                         grid->tiles[seen_rel_p.y*w + seen_rel_p.x] = true;
                     }
-                    seen->seen_by_player = true;
+                    MarkAsSeen(seen);
                 }
             }
             else
@@ -918,7 +966,7 @@ CalculateVisibility(VisibilityGrid *grid, Entity *e, float radius)
                      Next(&on_tile))
                 {
                     Entity *seen = on_tile.entity;
-                    seen->seen_by_player = true;
+                    MarkAsSeen(seen);
                 }
             }
         }
@@ -944,16 +992,32 @@ UpdateAndRenderEntities(void)
 {
     if (entity_manager->turn_timer <= 0.0f)
     {
-        if (entity_manager->player)
+        int player_view_radius = 24;
+        Entity *player = entity_manager->player;
+        if (player)
         {
-            int player_view_radius = 16;
-            entity_manager->player_visibility = PushVisibilityGrid(GetTempArena(), MakeRect2iCenterHalfDim(entity_manager->player->p, MakeV2i(player_view_radius)));
-            CalculateVisibility(&entity_manager->player_visibility, entity_manager->player, (float)player_view_radius);
+            Rect2i grid_bounds = MakeRect2iCenterHalfDim(player->p, MakeV2i(player_view_radius));
+            entity_manager->player_visibility = PushVisibilityGrid(GetTempArena(), grid_bounds);
+            CalculateVisibility(&entity_manager->player_visibility, player, (float)player_view_radius);
         }
 
         if (PlayerAct())
         {
+            CalculateVisibility(&entity_manager->player_visibility, player, (float)player_view_radius);
             // entity_manager->turn_timer += 0.10f;
+            for (EntityIter iter = IterateAllEntities(); IsValid(iter); Next(&iter))
+            {
+                Entity *e = iter.entity;
+
+                // see if the player lost track of us
+                if (!AreEqual(e->p, e->seen_p) || HasProperty(e, EntityProperty_Volatile))
+                {
+                    e->seen_by_player = false;
+                }
+
+                // simulate entity after, to defer the unseeing one turn
+                CleanStaleReferences(&e->inventory);
+            }
         }
     }
     else
@@ -975,46 +1039,54 @@ UpdateAndRenderEntities(void)
     Rect2i viewport = MakeRect2iMinDim(render_state->camera_bottom_left, MakeV2i(viewport_w, viewport_h));
     render_state->viewport = viewport;
 
-    for (EntityIter it = IterateAllEntities(); IsValid(it); Next(&it))
+    for (int y = viewport.min.y; y <= viewport.max.y; y += 1)
+    for (int x = viewport.min.x; x <= viewport.max.x; x += 1)
     {
-        Entity *e = it.entity;
-
-        Sprite sprite = e->sprites[e->sprite_index];
-        if (e->open)
+        V2i p = MakeV2i(x, y);
+        for (EntityIter it = GetEntitiesAt(p); IsValid(it); Next(&it))
         {
-            sprite.foreground = MakeColor(sprite.foreground.r / 2,
-                                          sprite.foreground.g / 2,
-                                          sprite.foreground.b / 2);
-        }
+            Entity *e = it.entity;
 
-        if (e->sprite_anim_timer >= e->sprite_anim_rate)
-        {
-            e->sprite_anim_timer -= e->sprite_anim_rate;
-            e->sprite_index = e->sprite_index + 1;
-            if (e->sprite_index >= e->sprite_count)
+            Sprite sprite = e->sprites[e->sprite_index];
+            if (e->open)
             {
-                e->sprite_index = 0;
-                e->sprite_anim_timer -= e->sprite_anim_pause_time;
+                sprite.foreground = MakeColor(sprite.foreground.r / 2,
+                                              sprite.foreground.g / 2,
+                                              sprite.foreground.b / 2);
             }
-        }
-        e->sprite_anim_timer += platform->dt;
 
-        if (e->flash_timer >= 0.0f)
-        {
-            sprite.foreground = e->flash_color;
-            e->flash_timer -= platform->dt;
-        }
-
-        if (e->flash_timer <= 0.0f && HasProperty(e, EntityProperty_Dying))
-        {
-            KillEntity(e);
-        }
-
-        if (IsInRect(viewport, e->p))
-        {
-            if (HasProperty(e, EntityProperty_InWorld) && e->seen_by_player)
+#if 0
+            if (e->sprite_anim_timer >= e->sprite_anim_rate)
             {
-                if (!IsVisible(&entity_manager->player_visibility, e->p))
+                e->sprite_anim_timer -= e->sprite_anim_rate;
+                e->sprite_index = e->sprite_index + 1;
+                if (e->sprite_index >= e->sprite_count)
+                {
+                    e->sprite_index = 0;
+                    e->sprite_anim_timer -= e->sprite_anim_pause_time;
+                }
+            }
+            e->sprite_anim_timer += platform->dt;
+
+            if (e->flash_timer >= 0.0f)
+            {
+                sprite.foreground = e->flash_color;
+                e->flash_timer -= platform->dt;
+            }
+#endif
+
+            if (HasProperty(e, EntityProperty_PlayerControlled))
+            {
+                e->seen_by_player = true;
+            }
+
+            bool draw = (HasProperty(e, EntityProperty_InWorld) && e->seen_by_player);
+            draw |= game_state->debug_fullbright;
+            if (draw)
+            {
+                bool visible = IsVisible(&entity_manager->player_visibility, e->p);
+                visible |= game_state->debug_fullbright;
+                if (!visible)
                 {
                     sprite.foreground.r = sprite.foreground.r / 2;
                     sprite.foreground.g = sprite.foreground.g / 2;
@@ -1026,12 +1098,6 @@ UpdateAndRenderEntities(void)
                 PushTile(Layer_World, e->p, sprite);
             }
         }
-
-        if (HasProperty(e, EntityProperty_PlayerControlled))
-        {
-            int y = 0; (void)y;
-        }
-        CleanStaleReferences(&e->inventory);
     }
 
     if (entity_manager->looking_at_container)

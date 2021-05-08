@@ -32,6 +32,10 @@ struct GameState
     Font world_font;
     Font ui_font;
 
+    bool debug_camera;
+    bool debug_fullbright;
+    V2i debug_camera_p;
+
     int debug_delay;
     int debug_delay_frame_count;
 };

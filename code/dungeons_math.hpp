@@ -1038,6 +1038,42 @@ GetHeight(Rect2i a)
     return a.max.y - a.min.y;
 }
 
+DUNGEONS_INLINE V2i
+Corner00(Rect2i a)
+{
+    V2i result;
+    result.x = a.min.x;
+    result.y = a.min.y;
+    return result;
+}
+
+DUNGEONS_INLINE V2i
+Corner10(Rect2i a)
+{
+    V2i result;
+    result.x = a.max.x;
+    result.y = a.min.y;
+    return result;
+}
+
+DUNGEONS_INLINE V2i
+Corner01(Rect2i a)
+{
+    V2i result;
+    result.x = a.min.x;
+    result.y = a.max.y;
+    return result;
+}
+
+DUNGEONS_INLINE V2i
+Corner11(Rect2i a)
+{
+    V2i result;
+    result.x = a.max.x;
+    result.y = a.max.y;
+    return result;
+}
+
 DUNGEONS_INLINE Rect2i
 AddHalfDim(Rect2i a, V2i half_dim)
 {

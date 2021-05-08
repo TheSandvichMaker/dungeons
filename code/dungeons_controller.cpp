@@ -13,8 +13,26 @@ HandleButton(Button *button, bool pressed)
 }
 
 static inline void
-InitializeInputBindings(void)
+InitializeInputBindings(Arena *string_arena)
 {
+    input->north.name        = "north"_str;
+    input->northeast.name    = "northeast"_str;
+    input->east.name         = "east"_str;
+    input->southeast.name    = "southeast"_str;
+    input->south.name        = "south"_str;
+    input->southwest.name    = "southwest"_str;
+    input->west.name         = "west"_str;
+    input->northwest.name    = "northwest"_str;
+    input->here.name         = "here"_str;
+    input->interact.name     = "interact"_str;
+    input->alt_interact.name = "alt_interact"_str;
+
+    input->f_keys[0].name = "F0? That's a problem."_str;
+    for (size_t i = 1; i < ArrayCount(input->f_keys); ++i)
+    {
+        input->f_keys[i].name = FormatString(string_arena, "F%zu", i);
+    }
+
     input->binding_map['W']                          = &input->north;
     input->binding_map[PlatformInputCode_Up]         = &input->north;
     input->binding_map[PlatformInputCode_Numpad8]    = &input->north;
@@ -56,6 +74,11 @@ InitializeInputBindings(void)
 
     input->binding_map[PlatformInputCode_LButton] = &input->interact;
     input->binding_map[PlatformInputCode_RButton] = &input->alt_interact;
+
+    for (size_t i = 1; i < ArrayCount(input->f_keys); ++i)
+    {
+        input->binding_map[PlatformInputCode_F1 + i - 1] = &input->f_keys[i];
+    }
 }
 
 static inline void

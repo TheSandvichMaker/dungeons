@@ -24,6 +24,7 @@ enum EntityPropertyKind
     EntityProperty_Invulnerable,
     EntityProperty_Unlockable,
     EntityProperty_Door,
+    EntityProperty_Volatile,
     EntityProperty_Martins,
     EntityProperty_C,
     EntityProperty_AngryDude,
@@ -104,8 +105,11 @@ struct Entity
 
     EntityHandle required_key;
     bool open;
+
+    V2i seen_p;
     bool seen_by_player;
 
+    int32_t uses;
     int32_t amount;
 
     V2i p;
