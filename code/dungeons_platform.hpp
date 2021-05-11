@@ -357,14 +357,7 @@ struct PlatformHighResTime
     uint64_t opaque;
 };
 
-struct ThreadLocalContext
-{
-    Arena *temp_arena;
-    Arena *prev_temp_arena;
-
-    Arena temp_arena_1_;
-    Arena temp_arena_2_;
-};
+struct ThreadLocalContext;
 
 struct PlatformJobQueue;
 #define PLATFORM_JOB(name) void name(void *args)
@@ -428,9 +421,11 @@ struct Platform
     void (*DeallocateMemory)(void *memory);
 
     ThreadLocalContext *(*GetThreadLocalContext)(void);
+    Arena *(*GetTempArena)(void);
 
     void (*AddJob)(PlatformJobQueue *queue, void *arg, PlatformJobProc *proc);
     void (*WaitForJobs)(PlatformJobQueue *queue);
+    void (*DebugPauseThread)(void);
 
     Buffer (*ReadFile)(Arena *arena, String filename);
 
@@ -441,14 +436,6 @@ struct Platform
 };
 
 static Platform *platform;
-
-static inline Arena *
-GetTempArena(void)
-{
-    ThreadLocalContext *context = platform->GetThreadLocalContext();
-    Arena *result = context->temp_arena;
-    return result;
-}
 
 static inline void
 LeaveUnhandled(PlatformEvent *event)

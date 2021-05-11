@@ -223,7 +223,7 @@ FormatString(Arena *arena, char *fmt, ...)
 static inline void
 Win32_DebugPrint(char *fmt, ...)
 {
-    Arena *arena = GetTempArena();
+    Arena *arena = platform->GetTempArena();
     ScopedMemory temp(arena);
 
     va_list args;
@@ -241,7 +241,7 @@ Win32_LogPrint(PlatformLogLevel level, char *fmt, ...)
 {
     Win32State *state = &win32_state;
 
-    Arena *arena = GetTempArena();
+    Arena *arena = platform->GetTempArena();
     ScopedMemory temp(arena);
 
     va_list args;
@@ -350,7 +350,7 @@ Win32_GetPrevLogLine(PlatformLogLine *line)
 static inline void
 Win32_ReportError(PlatformErrorType type, char *error, ...)
 {
-    Arena *arena = GetTempArena();
+    Arena *arena = platform->GetTempArena();
     ScopedMemory temp(arena);
 
     va_list args;
@@ -618,6 +618,17 @@ Win32_HandleSpecialKeys(HWND window, int vk_code, bool pressed, bool alt_is_down
                     g_running = false;
                 } break;
 
+                case 'P':
+                {
+                    // unpause paused threads
+                    for (ThreadLocalContext *ctx = win32_state.first_thread_local_context;
+                         ctx;
+                         ctx = ctx->next)
+                    {
+                        SetEvent(ctx->pause_event);
+                    }
+                } break;
+
                 default:
                 {
                     processed = false;
@@ -771,8 +782,13 @@ Win32_InitializeTLSForThread(ThreadLocalContext *context)
         Win32_ExitWithLastError();
     }
 
+    context->next = win32_state.first_thread_local_context;
+    win32_state.first_thread_local_context = context;
+
     context->temp_arena      = &context->temp_arena_1_;
     context->prev_temp_arena = &context->temp_arena_2_;
+
+    context->pause_event = CreateEventA(NULL, FALSE, TRUE, NULL);
 }
 
 static ThreadLocalContext *
@@ -784,6 +800,21 @@ Win32_GetThreadLocalContext(void)
         Win32_ExitWithLastError();
     }
     return result;
+}
+
+static inline Arena *
+Win32_GetTempArena(void)
+{
+    ThreadLocalContext *context = Win32_GetThreadLocalContext();
+    Arena *result = context->temp_arena;
+    return result;
+}
+
+static inline void
+Win32_DebugPauseThread(void)
+{
+    ThreadLocalContext *context = Win32_GetThreadLocalContext();
+    WaitForSingleObject(context->pause_event, INFINITE);
 }
 
 struct Win32ThreadArgs
@@ -947,8 +978,10 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     platform->DecommitMemory = Win32_Decommit;
     platform->DeallocateMemory = Win32_Deallocate;
     platform->GetThreadLocalContext = Win32_GetThreadLocalContext;
+    platform->GetTempArena = Win32_GetTempArena;
     platform->AddJob = Win32_AddJob;
     platform->WaitForJobs = Win32_WaitForJobs;
+    platform->DebugPauseThread = Win32_DebugPauseThread;
     platform->ReadFile = Win32_ReadFile;
     platform->GetTime = Win32_GetTime;
     platform->SecondsElapsed = Win32_SecondsElapsed;

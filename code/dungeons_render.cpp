@@ -79,7 +79,7 @@ PushBitmap(Arena *arena, int w, int h)
     result.w = w;
     result.h = h;
     result.pitch = w;
-    result.data = PushArray(arena, w*h, Color);
+    result.data = PushAlignedArray(arena, w*h, Color, 16);
     return result;
 }
 
@@ -203,6 +203,50 @@ BlitBitmapMask(Bitmap *dest, Bitmap *source, V2i p, Color foreground, Color back
                 *dest_pixel = background;
             }
             ++dest_pixel;
+        }
+        source_row += source->pitch;
+        dest_row += dest->pitch;
+    }
+}
+
+static inline void
+BlitBitmapMaskSSE(Bitmap *dest, Bitmap *source, V2i p, Color foreground, Color background)
+{
+    int source_min_x = Max(0, -p.x);
+    int source_min_y = Max(0, -p.y);
+    int source_max_x = Min(source->w, dest->w - p.x);
+    int source_max_y = Min(source->h, dest->h - p.y);
+    int source_adjusted_w = source_max_x - source_min_x;
+    int source_adjusted_h = source_max_y - source_min_y;
+
+    Assert((dest->pitch % 4) == 0);
+    Assert((source->pitch % 4) == 0);
+    Assert((source_adjusted_w % 4) == 0);
+
+    p = Clamp(p, MakeV2i(0, 0), MakeV2i(dest->w, dest->h));
+
+    __m128i mask_ff = _mm_set1_epi32(0xFF);
+    __m128i zero = _mm_set1_epi32(0);
+    __m128i foreground_wide = _mm_set1_epi32(foreground.u32);
+    __m128i background_wide = _mm_set1_epi32(background.u32);
+
+    Color *source_row = source->data + source_min_y*source->pitch + source_min_x;
+    Color *dest_row = dest->data + p.y*dest->pitch + p.x;
+    for (int y = 0; y < source_adjusted_h; ++y)
+    {
+        Color *source_pixel = source_row;
+        Color *dest_pixel = dest_row;
+        for (int x = 0; x < source_adjusted_w; x += 4)
+        {
+            __m128i source_color = _mm_loadu_si128((__m128i *)source_pixel);
+            __m128i source_a = _mm_and_si128(_mm_srli_epi32(source_color, 24), mask_ff);
+            __m128i alpha_mask = _mm_cmpgt_epi32(source_a, zero);
+            __m128i dest_color = _mm_and_si128(alpha_mask, foreground_wide);
+            dest_color = _mm_or_si128(dest_color, _mm_andnot_si128(alpha_mask, background_wide));
+            _mm_storeu_si128((__m128i *)dest_pixel, dest_color);
+
+            source_pixel += 4;
+            dest_pixel += 4;
         }
         source_row += source->pitch;
         dest_row += dest->pitch;
@@ -358,7 +402,7 @@ PushRectOutline(RenderLayer layer, const Rect2i &rect, Color foreground, Color b
 static void
 BeginRender(void)
 {
-    Arena *arena = GetTempArena();
+    Arena *arena = platform->GetTempArena();
     render_state->arena = arena;
 
     render_state->fonts[Layer_Ground] = render_state->world_font;
@@ -418,7 +462,7 @@ PLATFORM_JOB(TiledRenderJob)
 
                     Rect2i glyph_rect = GetGlyphRect(font, sprite->glyph);
                     Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, glyph_rect);
-                    BlitBitmapMask(&target, &glyph_bitmap, p, sprite->foreground, sprite->background);
+                    BlitBitmapMaskSSE(&target, &glyph_bitmap, p, sprite->foreground, sprite->background);
                 }
             } break;
 
@@ -554,6 +598,8 @@ RenderCommandsToBitmap(Bitmap *target)
 
     int tile_w = (target->w + tile_count_x - 1) / tile_count_x;
     int tile_h = (target->h + tile_count_y - 1) / tile_count_y;
+
+    tile_w = ((tile_w + 3) / 4)*4;
 
     for (int tile_y = 0; tile_y < tile_count_y; ++tile_y)
     for (int tile_x = 0; tile_x < tile_count_x; ++tile_x)

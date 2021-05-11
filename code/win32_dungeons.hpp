@@ -55,6 +55,19 @@ struct PlatformJobQueue
     StaticAssert(IsPow2(ArrayCount(jobs)), "Jobs array must be a power of 2");
 };
 
+struct ThreadLocalContext
+{
+    ThreadLocalContext *next;
+
+    Arena *temp_arena;
+    Arena *prev_temp_arena;
+
+    Arena temp_arena_1_;
+    Arena temp_arena_2_;
+
+    HANDLE pause_event;
+};
+
 struct Win32State
 {
     Arena arena;
@@ -67,6 +80,7 @@ struct Win32State
     DWORD thread_local_index;
 
     Win32AllocationHeader allocation_sentinel;
+    ThreadLocalContext *first_thread_local_context;
 
     TicketMutex log_mutex;
     int log_line_count;

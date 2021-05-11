@@ -58,7 +58,7 @@ FormatTempString(char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    String result = FormatStringV(GetTempArena(), fmt, args);
+    String result = FormatStringV(platform->GetTempArena(), fmt, args);
     va_end(args);
     return result;
 }

@@ -433,6 +433,7 @@ PLATFORM_JOB(DoWorldGen)
     // Make entities
     //
 
+#if 1
     for (int y = 0; y < tiles->h; ++y)
     for (int x = 0; x < tiles->w; ++x)
     {
@@ -459,7 +460,7 @@ PLATFORM_JOB(DoWorldGen)
             GenRoom *room = tiles->associated_rooms[IndexP(tiles, p)];
             if (room)
             {
-                PushToList(arena, &room->associated_entities, e);
+                PushToList(arena, &room->associated_entities, e->handle);
             }
         }
     }
@@ -479,11 +480,9 @@ PLATFORM_JOB(DoWorldGen)
     leet_gold->name = StringLiteral("L33T G0LD");
     AddToInventory(chest, leet_gold);
 
-    Entity *angry_orc = AddEntity(StringLiteral("Angry Orc"), player_spawn_p - MakeV2i(3, 3), MakeSprite('O', MakeColor(126, 192, 95)));
-    angry_orc->health = 3;
-    angry_orc->speed = 125;
-    SetProperty(angry_orc, EntityProperty_BlockMovement);
-    SetProperty(angry_orc, EntityProperty_Hostile);
+    entity_manager->light_source = AddEntity("Torch"_str, player_spawn_p - MakeV2i(3, 5), MakeSprite('6', MakeColor(255, 192, 128)));
+
+    AddOrc(player_spawn_p - MakeV2i(3, 3));
 
     Entity *key = AddEntity(StringLiteral("Shiny Key"), {}, MakeSprite(Glyph_Male, MakeColor(255, 200, 0)));
     AddToInventory(chest, key);
@@ -498,6 +497,27 @@ PLATFORM_JOB(DoWorldGen)
             LockWithKey(e, key);
         }
     }
+#else
+    V2i player_spawn_p = MakeV2i(12, 12);
+    AddPlayer(player_spawn_p);
+
+    Rect2i room_rect = MakeRect2iMinDim(0, 0, 25, 25);
+    for (int x = room_rect.min.x; x <= room_rect.max.x; x += 1)
+    {
+        AddWall(MakeV2i(x, room_rect.min.y));
+        AddWall(MakeV2i(x, room_rect.max.y));
+    }
+
+    for (int y = room_rect.min.y; y <= room_rect.max.y; y += 1)
+    {
+        AddWall(MakeV2i(room_rect.min.x, y));
+        AddWall(MakeV2i(room_rect.max.x, y));
+    }
+
+    AddWall(MakeV2i(11, 18));
+    AddWall(MakeV2i(12, 18));
+    AddWall(MakeV2i(13, 18));
+#endif
 
     tiles->complete = true;
 }

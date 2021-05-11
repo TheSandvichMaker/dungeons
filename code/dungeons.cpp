@@ -105,6 +105,11 @@ AppUpdateAndRender(Platform *platform_)
         platform->app_initialized = true;
     }
 
+    if (Pressed(input->f_keys[2]))
+    {
+        platform->DebugPauseThread();
+    }
+
     HandleInput();
 
     if (Pressed(input->f_keys[1]))
@@ -136,6 +141,10 @@ AppUpdateAndRender(Platform *platform_)
         int viewport_w = (target->w + world_font->glyph_w - 1) / world_font->glyph_w;
         int viewport_h = (target->h + world_font->glyph_h - 1) / world_font->glyph_h;
 
+        Entity *torch = entity_manager->light_source;
+        VisibilityGrid torch_grid = PushVisibilityGrid(platform->GetTempArena(), MakeRect2iCenterHalfDim(torch->p, MakeV2i(12, 12)));
+        CalculateVisibilityRecursiveShadowcast(&torch_grid, torch);
+
         Rect2i viewport = MakeRect2iMinDim(render_state->camera_bottom_left, MakeV2i(viewport_w, viewport_h));
         for (int y = viewport.min.y; y < viewport.max.y; y += 1)
         for (int x = viewport.min.x; x < viewport.max.x; x += 1)
@@ -147,17 +156,24 @@ AppUpdateAndRender(Platform *platform_)
                 VisibilityGrid *grid = &entity_manager->player_visibility;
                 bool currently_visible = game_state->debug_fullbright || IsVisible(grid, p);
                 float visibility_mod = currently_visible ? 1.0f : 0.5f;
+
+                V3 light = MakeV3(0.25f);
+                if (IsVisible(&torch_grid, p))
+                {
+                    light += MakeV3(1.0f, 0.8f, 0.5f)*(1.0f / Max(1.0f, Length(p - torch->p)));
+                }
+
                 if (tile == GenTile_Room)
                 {
                     float perlin = OctavePerlinNoise(64.0f + 0.01f*(float)x, 64.0f + 0.02f*(float)y, 6, 0.75f);
                     Sprite sprite;
                     if (perlin < 0.45f)
                     {
-                        sprite = MakeSprite(Glyph_Tone25, LinearToSRGB(perlin*perlin*visibility_mod*MakeColorF(0.75f, 0.35f, 0.0f)));
+                        sprite = MakeSprite(Glyph_Tone25, LinearToSRGB(light*perlin*perlin*visibility_mod*MakeColorF(0.75f, 0.35f, 0.0f)));
                     }
                     else
                     {
-                        sprite = MakeSprite('=', LinearToSRGB(perlin*perlin*visibility_mod*MakeColorF(0.85f, 0.45f, 0.0f)));
+                        sprite = MakeSprite('=', LinearToSRGB(light*perlin*perlin*visibility_mod*MakeColorF(0.85f, 0.45f, 0.0f)));
                     }
                     PushTile(Layer_Ground, MakeV2i(x, y), sprite);
                 }

@@ -26,7 +26,7 @@ enum EntityPropertyKind
     EntityProperty_Unlockable,
     EntityProperty_Door,
     EntityProperty_Volatile,
-    EntityProperty_Hostile,
+    EntityProperty_EmitsLight,
     EntityProperty_COUNT,
     EntityProperty_PAGECOUNT = (EntityProperty_COUNT + 63) / 64,
 };
@@ -77,6 +77,12 @@ struct EntityList
 
 typedef Array<Entity *> EntityArray;
 
+enum AiKind
+{
+    Ai_None,
+    Ai_StandardHumanoid,
+};
+
 enum TriggerKind
 {
     Trigger_None,
@@ -84,6 +90,30 @@ enum TriggerKind
     Trigger_Container,
     Trigger_PickUp,
     Trigger_COUNT,
+};
+
+enum FactionKind
+{
+    Faction_None,
+    Faction_Human,
+    Faction_Monster,
+};
+
+static inline bool
+FactionIsHostileTo(FactionKind a, FactionKind b)
+{
+    if (a == b) return false;
+    if (a > b) Swap(a, b);
+
+    // if ((a == Faction_Human) && (b == Faction_Monster)) return true;
+
+    return false;
+}
+
+struct DamageDescriptor
+{
+    EntityHandle aggressor;
+    int32_t amount;
 };
 
 struct Entity
@@ -97,8 +127,12 @@ struct Entity
     };
 
     EntityList inventory;
+    EntityList forced_hostile_entities;
 
     String name;
+
+    AiKind ai;
+    FactionKind faction;
 
     TriggerKind contact_trigger;
 
@@ -147,6 +181,8 @@ struct EntityManager
 
     bool block_simulation;
 
+    Entity *light_source;
+
     Entity *player;
     Entity *looking_at_container;
     VisibilityGrid player_visibility;
@@ -161,7 +197,7 @@ struct EntityManager
 };
 GLOBAL_STATE(EntityManager, entity_manager);
 
-static inline EntityNode *NewEntityNode(Entity *entity);
+static inline EntityNode *NewEntityNode(EntityHandle handle);
 static inline void FreeEntityNode(EntityNode *node);
 static inline Entity *EntityFromHandle(EntityHandle handle);
 static inline EntityHandle HandleFromEntity(Entity *entity);
