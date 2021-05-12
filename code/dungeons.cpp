@@ -66,13 +66,154 @@ LoadFontFromDisk(Arena *arena, String filename, int glyph_w, int glyph_h)
     return result;
 }
 
-DUNGEONS_INLINE Color
-LinearToSRGB(V3 linear)
+static inline void
+CalculateLightMap(LightMap *light_map)
 {
-    Color result = MakeColor((uint8_t)(SquareRoot(linear.x)*255.0f),
-                             (uint8_t)(SquareRoot(linear.y)*255.0f),
-                             (uint8_t)(SquareRoot(linear.z)*255.0f));
-    return result;
+    enum TileKind
+    {
+        Tile_None,
+        Tile_Wall,
+        Tile_Floor,
+    };
+
+    struct Row
+    {
+        Row *next;
+        int at_col;
+        int depth;
+        float start_slope;
+        float end_slope;
+        int min_col;
+        int max_col;
+    };
+
+    Arena *arena = platform->GetTempArena();
+    ScopedMemory temp(arena);
+
+    size_t bounce_list_size = 2*WORLD_SIZE_X + 2*WORLD_SIZE_Y;
+    Entity **first_bounce_list = PushArray(arena, bounce_list_size, Entity *);
+    Entity **second_bounce_list = PushArray(arena, bounce_list_size, Entity *);
+
+    size_t source_count = 0;
+    Entity **source = first_bounce_list;
+
+    size_t dest_count = 0;
+    Entity **dest = second_bounce_list;
+
+    UNUSED_VARIABLE(dest_count);
+    UNUSED_VARIABLE(dest);
+
+    Entity *light_source = entity_manager->light_source;
+    source[source_count++] = light_source;
+
+    if (light_source)
+    {
+        V3 light_color = SRGBToLinear(light_source->sprites[light_source->sprite_index].foreground);
+        V2i origin = light_source->p;
+
+        ScopedMemory quadrant_temp(arena);
+        for (int quadrant = 0; quadrant < 4; quadrant += 1)
+        {
+            TileKind prev_tile = Tile_None;
+
+            Row *first_row = PushStruct(arena, Row);
+            first_row->depth = 1;
+            first_row->start_slope = -1.0f;
+            first_row->end_slope = 1.0f;
+            first_row->at_col = RoundUp((float)first_row->depth*first_row->start_slope);
+
+            while (first_row)
+            {
+                Row *row = first_row;
+                first_row = row->next;
+
+                int max_col = RoundDown((float)row->depth*row->end_slope);
+                for (int col = row->at_col; col <= max_col; col += 1)
+                {
+                    TileKind tile = Tile_None;
+                    bool is_symmetric = (((float)col >= (float)row->depth*row->start_slope) &&
+                                         ((float)col <= (float)row->depth*row->end_slope));
+
+                    row->at_col = col + 1;
+
+                    V2i rel_p = MakeV2i(col, row->depth);
+                    V2i abs_p = rel_p;
+                    switch (quadrant)
+                    {
+                        case 0: abs_p = origin + MakeV2i( rel_p.x,  rel_p.y); break;
+                        case 1: abs_p = origin + MakeV2i( rel_p.x, -rel_p.y); break;
+                        case 2: abs_p = origin + MakeV2i( rel_p.y,  rel_p.x); break;
+                        case 3: abs_p = origin + MakeV2i(-rel_p.y,  rel_p.x); break;
+                        INVALID_DEFAULT_CASE;
+                    }
+
+                    if ((abs_p.x < 0) ||
+                        (abs_p.y < 0) ||
+                        (abs_p.x >= WORLD_SIZE_X) ||
+                        (abs_p.y >= WORLD_SIZE_Y))
+                    {
+                        prev_tile = Tile_None;
+                        continue;
+                    }
+
+                    if (is_symmetric)
+                    {
+                        tile = Tile_Floor;
+                        float length = (float)LengthSq(rel_p);
+                        float light_strength = 1.0f / Max(1.0f, length);
+                        light_map->map[abs_p.y][abs_p.x] += light_strength*light_color;
+                    }
+                    else
+                    {
+                        Entity *entities_on_tile = entity_manager->entity_grid[abs_p.x][abs_p.y];
+                        for (Entity *e = entities_on_tile;
+                             e;
+                             e = e->next_on_tile)
+                        {
+                            if (HasProperty(e, EntityProperty_BlockSight))
+                            {
+                                tile = Tile_Wall;
+                                float length = (float)LengthSq(rel_p);
+                                float light_strength = 1.0f / Max(1.0f, length);
+                                light_map->map[abs_p.y][abs_p.x] += light_strength*light_color;
+                                break;
+                            }
+                        }
+                    }
+
+                    if ((prev_tile == Tile_Wall) && (tile == Tile_Floor))
+                    {
+                        row->start_slope = Slope(rel_p);
+                        row->at_col = RoundUp((float)row->depth*row->start_slope);
+                    }
+
+                    if ((prev_tile == Tile_Floor) && (tile == Tile_Wall))
+                    {
+                        Row *next_row = PushStruct(arena, Row);
+                        CopyStruct(row, next_row);
+                        next_row->depth += 1;
+                        next_row->end_slope = Slope(rel_p);
+
+                        next_row->next = first_row;
+                        first_row = next_row;
+                    }
+
+                    prev_tile = tile;
+                }
+
+                if (prev_tile == Tile_Floor)
+                {
+                    Row *next_row = PushStruct(arena, Row);
+                    CopyStruct(row, next_row);
+                    next_row->at_col = RoundUp((float)row->depth*row->start_slope);
+                    next_row->depth += 1;
+
+                    next_row->next = first_row;
+                    first_row = next_row;
+                }
+            }
+        }
+    }
 }
 
 void
@@ -129,24 +270,8 @@ AppUpdateAndRender(Platform *platform_)
     {
         UpdateAndRenderEntities();
 
-        Bitmap *target = render_state->target;
-        Font *world_font = render_state->world_font;
-
         Entity *player = entity_manager->player;
-        if (player)
-        {
-            V2i render_tile_dim = MakeV2i(platform->render_w / world_font->glyph_w, platform->render_h / world_font->glyph_h);
-            render_state->camera_bottom_left = player->p - render_tile_dim / 2;
-        }
-
-        int viewport_w = (target->w + world_font->glyph_w - 1) / world_font->glyph_w;
-        int viewport_h = (target->h + world_font->glyph_h - 1) / world_font->glyph_h;
-
-        Entity *torch = entity_manager->light_source;
-        VisibilityGrid *torch_grid = PushVisibilityGrid(platform->GetTempArena(), MakeRect2iCenterHalfDim(torch->p, MakeV2i(12, 12)));
-        CalculateVisibilityRecursiveShadowcast(torch_grid, torch);
-
-        Rect2i viewport = MakeRect2iMinDim(render_state->camera_bottom_left, MakeV2i(viewport_w, viewport_h));
+        Rect2i viewport = render_state->viewport;
         for (int y = viewport.min.y; y < viewport.max.y; y += 1)
         for (int x = viewport.min.x; x < viewport.max.x; x += 1)
         {
@@ -154,15 +279,9 @@ AppUpdateAndRender(Platform *platform_)
             GenTile tile = GetTile(game_state->gen_tiles, p);
             if (game_state->debug_fullbright || SeenByPlayer(game_state->gen_tiles, MakeV2i(x, y)))
             {
-                VisibilityGrid *grid = &entity_manager->player_visibility;
-                bool currently_visible = game_state->debug_fullbright || IsVisible(grid, p);
+                // VisibilityGrid *grid = player ? player->visibility_grid : nullptr;
+                bool currently_visible = true; // game_state->debug_fullbright || IsVisible(grid, p);
                 float visibility_mod = currently_visible ? 1.0f : 0.5f;
-
-                V3 light = MakeV3(0.25f);
-                if (IsVisible(torch_grid, p))
-                {
-                    light += MakeV3(1.0f, 0.8f, 0.5f)*(1.0f / Max(1.0f, Length(p - torch->p)));
-                }
 
                 if (tile == GenTile_Room)
                 {
@@ -170,11 +289,11 @@ AppUpdateAndRender(Platform *platform_)
                     Sprite sprite;
                     if (perlin < 0.45f)
                     {
-                        sprite = MakeSprite(Glyph_Tone25, LinearToSRGB(light*perlin*perlin*visibility_mod*MakeColorF(0.75f, 0.35f, 0.0f)));
+                        sprite = MakeSprite(Glyph_Tone25, LinearToSRGB(perlin*perlin*visibility_mod*MakeColorF(0.75f, 0.35f, 0.0f)));
                     }
                     else
                     {
-                        sprite = MakeSprite('=', LinearToSRGB(light*perlin*perlin*visibility_mod*MakeColorF(0.85f, 0.45f, 0.0f)));
+                        sprite = MakeSprite('=', LinearToSRGB(perlin*perlin*visibility_mod*MakeColorF(0.85f, 0.45f, 0.0f)));
                     }
                     PushTile(Layer_Ground, MakeV2i(x, y), sprite);
                 }
@@ -208,6 +327,7 @@ AppUpdateAndRender(Platform *platform_)
         }
     }
 
+    CalculateLightMap(&render_state->light_map);
     EndRender();
 
     if (Pressed(input->interact))

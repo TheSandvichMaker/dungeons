@@ -177,6 +177,11 @@ struct RenderCommand
     };
 };
 
+struct LightMap
+{
+    V3 map[WORLD_SIZE_Y][WORLD_SIZE_X];
+};
+
 struct RenderState
 {
     Arena *arena;
@@ -186,6 +191,8 @@ struct RenderState
     Font *world_font;
     Font *ui_font;
     Font *fonts[Layer_COUNT];
+
+    LightMap light_map;
 
     V2i ui_top_right;
     V2i camera_bottom_left;

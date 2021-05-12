@@ -4,6 +4,9 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#define WORLD_SIZE_X 1024
+#define WORLD_SIZE_Y 1024
+
 #include "dungeons_platform.hpp"
 #include "dungeons_intrinsics.hpp"
 #include "dungeons_shared.hpp"

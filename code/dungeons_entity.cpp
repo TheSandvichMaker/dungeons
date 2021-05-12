@@ -266,7 +266,7 @@ static inline Entity *
 AddPlayer(V2i p)
 {
     Entity *e = AddEntity(StringLiteral("Player"), p, MakeSprite('@', MakeColor(255, 255, 0)));
-    SetProperties(e, EntityProperty_PlayerControlled|EntityProperty_BlockMovement|EntityProperty_BlockSight);
+    SetProperties(e, EntityProperty_PlayerControlled|EntityProperty_BlockMovement|EntityProperty_BlockSight|EntityProperty_HasVisibilityGrid);
 
     e->health = 100;
     e->faction = Faction_Human;
@@ -286,6 +286,7 @@ AddOrc(V2i p)
     e->ai = Ai_StandardHumanoid;
     e->faction = Faction_Monster;
     SetProperty(e, EntityProperty_BlockMovement);
+    SetProperty(e, EntityProperty_HasVisibilityGrid);
     return e;
 }
 
@@ -746,10 +747,9 @@ TryOpen(Entity *e, Entity *other)
         return true;
     }
 
-    bool open = false;
     if (e->required_key == NullEntityHandle())
     {
-        open = true;
+        e->open = true;
     }
     else
     {
@@ -766,21 +766,12 @@ TryOpen(Entity *e, Entity *other)
                         KillEntity(key);
                     }
                 }
-                open = true;
+                e->open = true;
             }
         }
     }
 
-    if (open)
-    {
-        e->open = true;
-        if (HasProperty(e, EntityProperty_Door))
-        {
-            UnsetProperty(e, EntityProperty_BlockMovement);
-        }
-    }
-
-    return open;
+    return e->open;
 }
 
 static inline void
@@ -859,6 +850,7 @@ ProcessTrigger(Entity *e, Entity *other)
         case Trigger_Unblock:
         {
             UnsetProperty(e, EntityProperty_BlockMovement);
+            UnsetProperty(e, EntityProperty_BlockSight);
         } break;
 
         case Trigger_Container:
@@ -1065,7 +1057,7 @@ static inline bool
 IsVisible(VisibilityGrid *grid, V2i p)
 {
     bool result = false;
-    if (IsInRect(grid->bounds, p))
+    if (grid && IsInRect(grid->bounds, p))
     {
         int w = GetWidth(grid->bounds);
         int rel_x = p.x - grid->bounds.min.x;
@@ -1082,7 +1074,7 @@ Slope(V2i p)
 }
 
 static inline void
-CalculateVisibilityRecursiveShadowcastInternal(VisibilityGrid *grid, int quadrant, V2i origin, int row, float start_slope, float end_slope)
+CalculateVisibilityRecursiveShadowcastInternal(VisibilityGrid *grid, bool is_player, int quadrant, V2i origin, int row, float start_slope, float end_slope)
 {
     int row_limit = grid->bounds.max.x - origin.x; // alert! alert! assuming square bounds alert!!!
     if (row >= row_limit)
@@ -1107,7 +1099,7 @@ CalculateVisibilityRecursiveShadowcastInternal(VisibilityGrid *grid, int quadran
             if (HasProperty(e, EntityProperty_BlockSight))
             {
                 SetVisible(grid, p);
-                SetSeenByPlayer(game_state->gen_tiles, p, true);
+                if (is_player) SetSeenByPlayer(game_state->gen_tiles, p, true);
 
                 is_wall = true;
             }
@@ -1115,7 +1107,7 @@ CalculateVisibilityRecursiveShadowcastInternal(VisibilityGrid *grid, int quadran
         if (is_symmetric)
         {
             SetVisible(grid, p);
-            SetSeenByPlayer(game_state->gen_tiles, p, true);
+            if (is_player) SetSeenByPlayer(game_state->gen_tiles, p, true);
         }
         if (prev_tile_set && prev_tile_was_wall && !is_wall)
         {
@@ -1125,28 +1117,29 @@ CalculateVisibilityRecursiveShadowcastInternal(VisibilityGrid *grid, int quadran
         {
             int next_row = row + 1;
             float next_end_slope = Slope(p_rel);
-            CalculateVisibilityRecursiveShadowcastInternal(grid, quadrant, origin, next_row, start_slope, next_end_slope);
+            CalculateVisibilityRecursiveShadowcastInternal(grid, is_player, quadrant, origin, next_row, start_slope, next_end_slope);
         }
         prev_tile_was_wall = is_wall;
         prev_tile_set = true;
     }
     if (!prev_tile_was_wall)
     {
-        CalculateVisibilityRecursiveShadowcastInternal(grid, quadrant, origin, row + 1, start_slope, end_slope);
+        CalculateVisibilityRecursiveShadowcastInternal(grid, is_player, quadrant, origin, row + 1, start_slope, end_slope);
     }
 }
 
 static inline void
 CalculateVisibilityRecursiveShadowcast(VisibilityGrid *grid, Entity *e)
 {
+    bool is_player = (entity_manager->player && (e == entity_manager->player));
     for (int i = 0; i < 4; i += 1)
     {
-        CalculateVisibilityRecursiveShadowcastInternal(grid, i, e->p, 1, -1, 1);
+        CalculateVisibilityRecursiveShadowcastInternal(grid, is_player, i, e->p, 1, -1, 1);
     }
 
     SetVisible(grid, e->p);
     MarkAsSeen(e);
-    SetSeenByPlayer(game_state->gen_tiles, e->p, true);
+    if (is_player) SetSeenByPlayer(game_state->gen_tiles, e->p, true);
 }
 
 static inline VisibilityGrid *

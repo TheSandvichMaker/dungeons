@@ -72,6 +72,27 @@ GlyphDim(Font *font)
     return MakeV2i(font->glyph_w, font->glyph_h);
 }
 
+DUNGEONS_INLINE Color
+LinearToSRGB(V3 linear)
+{
+    Color result = MakeColor((uint8_t)(SquareRoot(linear.x)*255.0f),
+                             (uint8_t)(SquareRoot(linear.y)*255.0f),
+                             (uint8_t)(SquareRoot(linear.z)*255.0f));
+    return result;
+}
+
+DUNGEONS_INLINE V3
+SRGBToLinear(Color color)
+{
+    V3 result = MakeV3((1.0f / 255.0f)*(float)color.r,
+                       (1.0f / 255.0f)*(float)color.g,
+                       (1.0f / 255.0f)*(float)color.b);
+    result.x *= result.x;
+    result.y *= result.y;
+    result.z *= result.z;
+    return result;
+}
+
 static inline Bitmap
 PushBitmap(Arena *arena, int w, int h)
 {
@@ -415,6 +436,8 @@ BeginRender(void)
 
     Swap(render_state->command_buffer_hash, render_state->prev_command_buffer_hash);
     render_state->command_buffer_hash = 0;
+
+    ZeroStruct(&render_state->light_map);
 }
 
 struct TiledRenderJobParams
@@ -450,8 +473,10 @@ PLATFORM_JOB(TiledRenderJob)
                 V2i p = MakeV2i(command->p.x, command->p.y);
                 Sprite *sprite = &command->sprite;
 
+                V3 light = MakeV3(1);
                 if (LayerUsesCamera((RenderLayer)at->layer))
                 {
+                    light = render_state->light_map.map[p.y][p.x];
                     p -= render_state->camera_bottom_left;
                 }
 
@@ -460,9 +485,11 @@ PLATFORM_JOB(TiledRenderJob)
                 {
                     p -= clip_rect.min;
 
+                    Color foreground = LinearToSRGB(SRGBToLinear(sprite->foreground)*light);
+
                     Rect2i glyph_rect = GetGlyphRect(font, sprite->glyph);
                     Bitmap glyph_bitmap = MakeBitmapView(&font->bitmap, glyph_rect);
-                    BlitBitmapMaskSSE(&target, &glyph_bitmap, p, sprite->foreground, sprite->background);
+                    BlitBitmapMaskSSE(&target, &glyph_bitmap, p, foreground, sprite->background);
                 }
             } break;
 

@@ -4,9 +4,6 @@
 #define MAX_ENTITY_COUNT (1 << 16)
 #define ENTITY_HASH_SIZE 8192
 
-#define WORLD_SIZE_X 1024
-#define WORLD_SIZE_Y 1024
-
 struct Path
 {
     uint32_t length;

@@ -480,7 +480,7 @@ PLATFORM_JOB(DoWorldGen)
     leet_gold->name = StringLiteral("L33T G0LD");
     AddToInventory(chest, leet_gold);
 
-    entity_manager->light_source = AddEntity("Torch"_str, player_spawn_p - MakeV2i(3, 5), MakeSprite('6', MakeColor(255, 192, 128)));
+    entity_manager->light_source = AddEntity("Torch"_str, player_spawn_p - MakeV2i(7, 5), MakeSprite('6', MakeColor(255, 192, 128)));
 
     AddOrc(player_spawn_p - MakeV2i(3, 3));
 
