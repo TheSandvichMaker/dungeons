@@ -237,6 +237,7 @@ AddEntity(String name, V2i p, Sprite sprite, EntityPropertySet initial_propertie
         result->sprites[result->sprite_count++] = sprite;
         result->speed = 100;
         result->amount = 1;
+        result->view_radius = 24.0f;
 
         MoveEntity(result, p);
     }
@@ -962,15 +963,15 @@ PlayerAct(void)
     return result;
 }
 
-static inline VisibilityGrid
+static inline VisibilityGrid *
 PushVisibilityGrid(Arena *arena, Rect2i bounds)
 {
-    VisibilityGrid result = {};
-    result.bounds = bounds;
+    VisibilityGrid *result = PushStruct(arena, VisibilityGrid);
+    result->bounds = bounds;
 
     int width = GetWidth(bounds);
     int height = GetHeight(bounds);
-    result.tiles = PushArray(arena, width*height, bool);
+    result->tiles = PushArray(arena, width*height, bool);
 
     return result;
 }
@@ -983,7 +984,7 @@ MarkAsSeen(Entity *e)
 }
 
 static inline void
-CalculateVisibility(VisibilityGrid *grid, Entity *e, float radius)
+CalculateVisibilityMassRay(VisibilityGrid *grid, Entity *e, float radius)
 {
     int w = GetWidth(grid->bounds);
     int h = GetHeight(grid->bounds);
@@ -1148,27 +1149,141 @@ CalculateVisibilityRecursiveShadowcast(VisibilityGrid *grid, Entity *e)
     SetSeenByPlayer(game_state->gen_tiles, e->p, true);
 }
 
+static inline VisibilityGrid *
+PushAndCalculateVisibility(Arena *arena, Entity *e)
+{
+    int radius = RoundUp(e->view_radius);
+    Rect2i bounds = MakeRect2iCenterHalfDim(e->p, MakeV2i(radius));
+
+    VisibilityGrid *result = PushVisibilityGrid(arena, bounds);
+    CalculateVisibilityRecursiveShadowcast(result, e);
+
+    return result;
+}
+
+static inline bool
+IsVisibleTo(Entity *e, V2i p)
+{
+    if (!HasProperty(e, EntityProperty_HasVisibilityGrid))
+    {
+        return false;
+    }
+
+    if (Length(p - e->p) > e->view_radius)
+    {
+        return false;
+    }
+
+    return IsVisible(e->visibility_grid, p);
+}
+
+static inline bool
+EntityAct(Entity *e)
+{
+    if (e->ai != Ai_None)
+    {
+        e->energy += e->speed;
+        while (e->energy > 100)
+        {
+            e->energy -= 100;
+
+            int32_t best_dist_sq = INT32_MAX;
+            Entity *target = nullptr;
+            for (EntityIter iter_other = IterateAllEntities(); IsValid(iter_other); Next(&iter_other))
+            {
+                Entity *other = iter_other.entity;
+
+                if (FactionIsHostileTo(e->faction, other->faction))
+                {
+                    V2i delta = e->p - other->p;
+                    int32_t dist_sq = LengthSq(delta);
+                    if (dist_sq < best_dist_sq)
+                    {
+                        best_dist_sq = dist_sq;
+                        target = other;
+                    }
+                }
+            }
+
+            for (Entity *other: Linearize(&e->forced_hostile_entities))
+            {
+                V2i delta = e->p - other->p;
+                int32_t dist_sq = LengthSq(delta);
+                if (dist_sq < best_dist_sq)
+                {
+                    best_dist_sq = dist_sq;
+                    target = other;
+                }
+            }
+
+            if (target)
+            {
+                V2i delta = e->p - target->p;
+                int32_t dist_sq = LengthSq(delta);
+                if (dist_sq < 12*12)
+                {
+                    for (Entity *seen: Raycast(e->p, target->p, Raycast_TestSight))
+                    {
+                        if (seen == target)
+                        {
+                            if ((Abs(delta.x) <= 1) &&
+                                (Abs(delta.y) <= 1))
+                            {
+                                TakeDamage(target, BasicDamage(e->handle, 1));
+                                return true;
+                            }
+                            else
+                            {
+                                ScopedMemory crap(&entity_manager->arena);
+                                Path path = FindPath(&entity_manager->arena, e->p, target->p);
+                                if (path.length > 0)
+                                {
+                                    MoveEntity(e, path.positions[0]);
+                                    return true;
+                                }
+                            }
+
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+static inline void
+NextTurn(void)
+{
+    entity_manager->turn_index += 1;
+    Clear(&entity_manager->turn_arena);
+}
+
+static inline void
+WarmUpEntityVisibilityGrids(void)
+{
+    for (EntityIter iter = IterateAllEntities(EntityProperty_HasVisibilityGrid);
+         IsValid(iter);
+         Next(&iter))
+    {
+        Entity *e = iter.entity;
+        e->visibility_grid = PushAndCalculateVisibility(&entity_manager->turn_arena, e);
+    }
+}
+
 static inline void
 UpdateAndRenderEntities(void)
 {
-    int player_view_radius = 24;
-    Entity *player = entity_manager->player;
-    V2i prev_player_p = MakeV2i(-1, -1);
-    if (player)
-    {
-        prev_player_p = player->p;
-        Rect2i grid_bounds = MakeRect2iCenterHalfDim(player->p, MakeV2i(player_view_radius));
-        entity_manager->player_visibility = PushVisibilityGrid(platform->GetTempArena(), grid_bounds);
-        CalculateVisibilityRecursiveShadowcast(&entity_manager->player_visibility, player);
-    }
-
     if (!entity_manager->block_simulation && entity_manager->turn_timer <= 0.0f)
     {
         if (PlayerAct())
         {
-            Rect2i grid_bounds = MakeRect2iCenterHalfDim(player->p, MakeV2i(player_view_radius));
-            entity_manager->player_visibility = PushVisibilityGrid(platform->GetTempArena(), grid_bounds);
-            CalculateVisibilityRecursiveShadowcast(&entity_manager->player_visibility, player);
+            NextTurn();
+
+            Entity *player = entity_manager->player;
+            player->visibility_grid = PushAndCalculateVisibility(&entity_manager->turn_arena, player);
 
             for (EntityIter iter = IterateAllEntities(); IsValid(iter); Next(&iter))
             {
@@ -1185,73 +1300,11 @@ UpdateAndRenderEntities(void)
                     e->seen_by_player = false;
                 }
 
-                if (e->ai != Ai_None)
+                bool did_something = EntityAct(e);
+                if (did_something)
                 {
-                    e->energy += e->speed;
-                    while (e->energy > 100)
-                    {
-                        e->energy -= 100;
-
-                        int32_t best_dist_sq = INT32_MAX;
-                        Entity *target = nullptr;
-                        for (EntityIter iter_other = IterateAllEntities(); IsValid(iter_other); Next(&iter_other))
-                        {
-                            Entity *other = iter_other.entity;
-
-                            if (FactionIsHostileTo(e->faction, other->faction))
-                            {
-                                V2i delta = e->p - other->p;
-                                int32_t dist_sq = LengthSq(delta);
-                                if (dist_sq < best_dist_sq)
-                                {
-                                    best_dist_sq = dist_sq;
-                                    target = other;
-                                }
-                            }
-                        }
-
-                        for (Entity *other: Linearize(&e->forced_hostile_entities))
-                        {
-                            V2i delta = e->p - other->p;
-                            int32_t dist_sq = LengthSq(delta);
-                            if (dist_sq < best_dist_sq)
-                            {
-                                best_dist_sq = dist_sq;
-                                target = other;
-                            }
-                        }
-
-                        if (target)
-                        {
-                            V2i delta = e->p - target->p;
-                            int32_t dist_sq = LengthSq(delta);
-                            if (dist_sq < 12*12)
-                            {
-                                for (Entity *seen: Raycast(e->p, target->p, Raycast_TestSight))
-                                {
-                                    if (seen == target)
-                                    {
-                                        if ((Abs(delta.x) <= 1) &&
-                                            (Abs(delta.y) <= 1))
-                                        {
-                                            TakeDamage(target, BasicDamage(e->handle, 1));
-                                        }
-                                        else
-                                        {
-                                            ScopedMemory crap(&entity_manager->arena);
-                                            Path path = FindPath(&entity_manager->arena, e->p, target->p);
-                                            if (path.length > 0)
-                                            {
-                                                MoveEntity(e, path.positions[0]);
-                                            }
-                                        }
-
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    NextTurn();
+                    e->visibility_grid = PushAndCalculateVisibility(&entity_manager->turn_arena, e);
                 }
             }
         }
@@ -1264,6 +1317,7 @@ UpdateAndRenderEntities(void)
     entity_manager->block_simulation = false;
 
     Font *world_font = render_state->world_font;
+    Entity *player = entity_manager->player;
     if (player)
     {
         V2i render_tile_dim = MakeV2i(platform->render_w / world_font->glyph_w, platform->render_h / world_font->glyph_h);

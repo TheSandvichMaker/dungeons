@@ -22,6 +22,7 @@ enum EntityPropertyKind
     EntityProperty_BlockMovement,
     EntityProperty_BlockSight,
     EntityProperty_PlayerControlled,
+    EntityProperty_HasVisibilityGrid,
     EntityProperty_Invulnerable,
     EntityProperty_Unlockable,
     EntityProperty_Door,
@@ -116,6 +117,12 @@ struct DamageDescriptor
     int32_t amount;
 };
 
+struct VisibilityGrid
+{
+    Rect2i bounds;
+    bool *tiles;
+};
+
 struct Entity
 {
     EntityHandle handle;
@@ -142,6 +149,10 @@ struct Entity
     V2i seen_p;
     bool seen_by_player;
 
+    float view_radius;
+    uint32_t visibility_grid_turn_index;
+    VisibilityGrid *visibility_grid;
+
     int32_t uses;
     int32_t amount;
 
@@ -164,12 +175,6 @@ struct Entity
     uint64_t properties[(EntityProperty_COUNT + 63) / 64];
 };
 
-struct VisibilityGrid
-{
-    Rect2i bounds;
-    bool *tiles;
-};
-
 struct EntityManager
 {
     Arena arena;
@@ -177,6 +182,7 @@ struct EntityManager
     Arena turn_arena;
     float turn_timer;
 
+    uint32_t turn_index;
     uint32_t entity_count;
 
     bool block_simulation;

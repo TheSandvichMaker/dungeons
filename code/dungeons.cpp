@@ -120,6 +120,7 @@ AppUpdateAndRender(Platform *platform_)
     if (!game_state->world_generated)
     {
         game_state->world_generated = EndGenerateWorld(&game_state->gen_tiles);
+        WarmUpEntityVisibilityGrids();
     }
 
     BeginRender();
@@ -142,8 +143,8 @@ AppUpdateAndRender(Platform *platform_)
         int viewport_h = (target->h + world_font->glyph_h - 1) / world_font->glyph_h;
 
         Entity *torch = entity_manager->light_source;
-        VisibilityGrid torch_grid = PushVisibilityGrid(platform->GetTempArena(), MakeRect2iCenterHalfDim(torch->p, MakeV2i(12, 12)));
-        CalculateVisibilityRecursiveShadowcast(&torch_grid, torch);
+        VisibilityGrid *torch_grid = PushVisibilityGrid(platform->GetTempArena(), MakeRect2iCenterHalfDim(torch->p, MakeV2i(12, 12)));
+        CalculateVisibilityRecursiveShadowcast(torch_grid, torch);
 
         Rect2i viewport = MakeRect2iMinDim(render_state->camera_bottom_left, MakeV2i(viewport_w, viewport_h));
         for (int y = viewport.min.y; y < viewport.max.y; y += 1)
@@ -158,7 +159,7 @@ AppUpdateAndRender(Platform *platform_)
                 float visibility_mod = currently_visible ? 1.0f : 0.5f;
 
                 V3 light = MakeV3(0.25f);
-                if (IsVisible(&torch_grid, p))
+                if (IsVisible(torch_grid, p))
                 {
                     light += MakeV3(1.0f, 0.8f, 0.5f)*(1.0f / Max(1.0f, Length(p - torch->p)));
                 }
