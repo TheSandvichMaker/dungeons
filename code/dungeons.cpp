@@ -327,25 +327,30 @@ AppUpdateAndRender(Platform *platform_)
         }
     }
 
-    StringRenderSpec spec = {};
-    spec.horizontal_align = Align_Left;
-    spec.horizontal_advance = 1;
+    static float dumb_timer = 0.0f;
+    dumb_timer += platform->dt;
 
     StringList list = {};
-    PushTStringF(&list, "Test 1 2 3\n");
+    PushTempStringF(&list, "Test 1 2 3\n");
     SetForeground(&list, MakeColor(255, 0, 0));
-    PushTStringF(&list, "Test 1 2 3 4\n");
+    PushTempStringF(&list, "Test 1 2 3 4\n");
     SetForeground(&list, MakeColor(0, 255, 0));
-    PushTStringF(&list, "Test 1 2 3 beans\n");
+    PushTempStringF(&list, "Test 1 2 3 beans\n");
     SetForeground(&list, MakeColor(255, 255, 255));
-    PushTStringF(&list, "Test");
+    PushTempStringF(&list, "Test");
     SetBackground(&list, MakeColor(0, 0, 255));
-    PushTStringF(&list, " one");
+    PushTempStringF(&list, " one");
     SetBackground(&list, MakeColor(0, 0, 0));
-    PushTStringF(&list, " two");
+    PushTempStringF(&list, " two");
     SetBackground(&list, MakeColor(0, 0, 255));
-    PushTStringF(&list, " three\n");
-    DrawStringList(Layer_World, &list, input->world_mouse_p, spec);
+    PushTempStringF(&list, " three\n");
+
+    StringRenderSpec spec = {};
+    spec.x_align_percentage = 0.5f + 0.5f*Sin(dumb_timer);
+    spec.x_axis = MakeV2(1, 0);
+    spec.y_axis = MakeV2(0,-1);
+
+    DrawStringList(Layer_Ui, input->ui_mouse_p, &list, spec);
 
     // CalculateLightMap(&render_state->light_map);
     EndRender();

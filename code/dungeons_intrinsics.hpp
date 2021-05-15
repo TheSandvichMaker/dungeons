@@ -6,6 +6,20 @@
 #include <xmmintrin.h>
 #include <wmmintrin.h>
 
+DUNGEONS_INLINE int32_t
+I32FromF32Round(float x)
+{
+    int32_t result = _mm_cvtss_si32(_mm_set_ss(x));    
+    return result;
+}
+
+DUNGEONS_INLINE int32_t
+I32FromF32Floor(float x)
+{
+    int32_t result = _mm_cvttss_si32(_mm_set_ss(x));    
+    return result;
+}
+
 static inline uint32_t
 RotateLeft(uint32_t value, int32_t amount)
 {

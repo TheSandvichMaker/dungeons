@@ -321,7 +321,7 @@ KillEntity(Entity *e)
     if (HasProperty(e, EntityProperty_PlayerControlled))
     {
         Assert(e == entity_manager->player);
-        entity_manager->player = nullptr;
+        entity_manager->player = &entity_manager->null_entity;
     }
     e->next_free = entity_manager->first_free_entity;
     entity_manager->first_free_entity = e;
@@ -816,7 +816,7 @@ DrawEntityList(EntityList *list, Rect2i rect, int highlight_index = -1)
 
         DrawTile(Layer_Ui, at_p - MakeV2i(1, 0), item->sprites[item->sprite_index]);
 
-        String text = PushTStringF(" %4d %.*s ", item->amount, StringExpand(item->name));
+        String text = PushTempStringF(" %4d %.*s ", item->amount, StringExpand(item->name));
         DrawText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
 
         at_p.y -= 1;
@@ -826,7 +826,7 @@ DrawEntityList(EntityList *list, Rect2i rect, int highlight_index = -1)
     if (!items.count)
     {
         Color text_color = MakeColor(127, 127, 127);
-        String text = PushTStringF("  Nothing here...");
+        String text = PushTempStringF("  Nothing here...");
         DrawText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
     }
 }
@@ -1321,6 +1321,10 @@ UpdateAndRenderEntities(void)
 
     Rect2i viewport = MakeRect2iMinDim(render_state->camera_bottom_left, MakeV2i(viewport_w, viewport_h));
     render_state->viewport = viewport;
+
+    input->mouse_p = MakeV2i(platform->mouse_x, platform->mouse_y);
+    input->ui_mouse_p = ScreenToUi(input->mouse_p);
+    input->world_mouse_p = ScreenToWorld(input->mouse_p);
 
     bool done_animations = true;
     for (int y = viewport.min.y; y <= viewport.max.y; y += 1)

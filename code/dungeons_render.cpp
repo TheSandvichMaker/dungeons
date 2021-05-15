@@ -373,23 +373,8 @@ DrawText(RenderLayer layer, V2i p, String text, Color foreground, Color backgrou
 }
 
 static inline void
-DrawStringList(RenderLayer layer, StringList *list, V2i p, StringRenderSpec spec = {})
+DrawStringList(RenderLayer layer, V2i p, StringList *list, StringRenderSpec spec = {})
 {
-    if (spec.horizontal_advance == 0)
-    {
-        spec.horizontal_advance = 1;
-    }
-
-    if (spec.vertical_advance == 0)
-    {
-        spec.vertical_advance = -1;
-    }
-
-    int abs_horizontal_advance = Abs(spec.horizontal_advance);
-    int sign_horizontal_advance = SignOf(spec.horizontal_advance);
-
-    int abs_vertical_advance = Abs(spec.vertical_advance);
-
     int total_w = 0;
     int total_h = 1;
 
@@ -418,34 +403,12 @@ DrawStringList(RenderLayer layer, StringList *list, V2i p, StringRenderSpec spec
         }
     }
 
-    total_w *= abs_horizontal_advance;
-    total_h *= abs_vertical_advance;
+    V2 start_p = V2FromV2i(p);
+    start_p -= (float)(total_h - 1)*spec.y_axis*spec.y_align_percentage;
 
-    V2i start_p = p;
-    if (spec.vertical_advance > 0)
-    {
-        if (spec.vertical_align == Align_Center)
-        {
-            start_p.y -= total_h / 2;
-        }
-        else if (spec.vertical_align == Align_Top)
-        {
-            start_p.y -= total_h - 1;
-        }
-    }
-    else
-    {
-        if (spec.vertical_align == Align_Center)
-        {
-            start_p.y += total_h / 2;
-        }
-        else if (spec.vertical_align == Align_Left)
-        {
-            start_p.y += total_h - 1;
-        }
-    }
+    int line_offset = 0;
+    V2 at_p = start_p;
 
-    V2i at_p = start_p;
     size_t scan_at = 0;
     StringNode *scan_node  = list->first;
     while (scan_node)
@@ -480,31 +443,12 @@ DrawStringList(RenderLayer layer, StringList *list, V2i p, StringRenderSpec spec
             }
         }
 
-        line_w *= abs_horizontal_advance;
+        // line_w *= abs_x_advance;
 
-        at_p.x = start_p.x;
-        if (spec.horizontal_advance > 0)
-        {
-            if (spec.horizontal_align == Align_Center)
-            {
-                at_p.x -= line_w / 2;
-            }
-            else if (spec.horizontal_align == Align_Right)
-            {
-                at_p.x -= line_w - 1;
-            }
-        }
-        else
-        {
-            if (spec.horizontal_align == Align_Center)
-            {
-                at_p.x += line_w / 2;
-            }
-            else if (spec.horizontal_align == Align_Left)
-            {
-                at_p.x += line_w - 1;
-            }
-        }
+        at_p = start_p;
+        at_p += (float)line_offset*spec.y_axis;
+
+        at_p -= (float)(line_w - 1)*spec.x_align_percentage*spec.x_axis;
 
         while (!((print_node == scan_node) &&
                  (print_at   == print_end_at)))
@@ -516,15 +460,9 @@ DrawStringList(RenderLayer layer, StringList *list, V2i p, StringRenderSpec spec
                 print_at += 1;
 
                 Sprite sprite = MakeSprite(glyph, print_node->foreground, print_node->background);
-                DrawTile(layer, at_p, sprite);
-                at_p.x += sign_horizontal_advance;
+                DrawTile(layer, V2iFromV2Round(at_p), sprite);
 
-                sprite.glyph = ' ';
-                for (int i = 1; i < abs_horizontal_advance; i += 1)
-                {
-                    DrawTile(layer, at_p, sprite);
-                    at_p.x += sign_horizontal_advance;
-                }
+                at_p += spec.x_axis;
             }
             else
             {
@@ -533,8 +471,17 @@ DrawStringList(RenderLayer layer, StringList *list, V2i p, StringRenderSpec spec
             }
         }
 
-        at_p.y += spec.vertical_advance;
+        line_offset += 1;
     }
+}
+
+static inline void
+DrawString(RenderLayer layer, V2i p, String string, StringRenderSpec spec = {})
+{
+    StringList list = {};
+    StringNode node = MakeStringNode(string);
+    AddNode(&list, &node);
+    DrawStringList(layer, p, &list, spec);
 }
 
 static inline void

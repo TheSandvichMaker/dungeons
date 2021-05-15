@@ -134,24 +134,20 @@ enum RenderLayer
 
 enum AlignKind
 {
-    Align_Right = -1,
-    Align_Top = Align_Right,
-
-    Align_Center = 0,
-
-    Align_Left = 1,
-    Align_Bottom = Align_Left,
+    Align_Start,
+    Align_Center,
+    Align_End,
 };
 
 struct StringRenderSpec
 {
-    bool      wrap               = false;
-    bool      clamp_to_bounds    = false;
-    int       horizontal_advance = 1;
-    int       vertical_advance   = -1;
-    Rect2i    bounds             = {};
-    AlignKind horizontal_align   = Align_Left;
-    AlignKind vertical_align     = Align_Top;
+    bool   wrap               = false;
+    bool   clamp_to_bounds    = false;
+    V2     x_axis             = MakeV2(1, 0);
+    V2     y_axis             = MakeV2(0, -1);
+    float  x_align_percentage = 0.0f;
+    float  y_align_percentage = 0.0f;
+    Rect2i bounds             = {};
 };
 
 static inline bool

@@ -243,6 +243,12 @@ AreEqual(V2i a, V2i b)
             a.y == b.y);
 }
 
+DUNGEONS_INLINE V2
+Perpendicular(V2 a)
+{
+    return MakeV2(-a.y, a.x);
+}
+
 DUNGEONS_INLINE V2i
 Perpendicular(V2i a)
 {
@@ -271,6 +277,72 @@ DUNGEONS_INLINE float ACosH(float x) { return acoshf(x); }
 DUNGEONS_INLINE float ATanH(float x) { return atanhf(x); }
 DUNGEONS_INLINE float Abs(float x) { return fabsf(x); }
 
+DUNGEONS_INLINE V2
+V2FromV2i(V2i a)
+{
+    V2 result;
+    result.x = (float)a.x;
+    result.y = (float)a.y;
+    return result;
+}
+
+DUNGEONS_INLINE V2i
+V2iFromV2Round(V2 a)
+{
+    V2i result;
+    result.x = I32FromF32Round(a.x);
+    result.y = I32FromF32Round(a.y);
+    return result;
+}
+
+DUNGEONS_INLINE V2i
+V2iFromV2Floor(V2 a)
+{
+    V2i result;
+    result.x = I32FromF32Floor(a.x);
+    result.y = I32FromF32Floor(a.y);
+    return result;
+}
+
+DUNGEONS_INLINE V2
+Arm2(float angle)
+{
+    V2 result;
+    result.x = Cos(angle);
+    result.y = Sin(angle);
+    return result;
+}
+
+DUNGEONS_INLINE V2
+Rotate(V2 v, V2 arm)
+{
+    V2 result;
+    result.x = (v.x*arm.x - v.y*arm.y);
+    result.y = (v.x*arm.y + v.y*arm.x);
+    return result;
+}
+
+DUNGEONS_INLINE V2
+Rotate(V2 v, float angle_radians) {
+    V2 result = Rotate(v, Arm2(angle_radians));
+    return result;
+}
+
+DUNGEONS_INLINE V2
+RotateClockwise(V2 v, V2 arm)
+{
+    V2 result;
+    result.x = (v.x*arm.x + v.y*arm.y);
+    result.y = (v.y*arm.x - v.x*arm.y);
+    return result;
+}
+
+DUNGEONS_INLINE V2
+RotateClockwise(V2 v, float angle_radians)
+{
+    V2 result = RotateClockwise(v, Arm2(angle_radians));
+    return result;
+}
 DUNGEONS_INLINE int32_t
 Abs(int32_t x)
 {

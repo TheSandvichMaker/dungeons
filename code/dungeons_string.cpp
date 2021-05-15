@@ -54,7 +54,7 @@ PushStringF(Arena *arena, const char *fmt, ...)
 }
 
 static inline String
-PushTStringF(const char *fmt, ...)
+PushTempStringF(const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -115,7 +115,7 @@ PushStringF(StringList *list, Arena *arena, const char *fmt, ...)
 }
 
 static inline void
-PushTStringF(StringList *list, const char *fmt, ...)
+PushTempStringF(StringList *list, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -135,13 +135,57 @@ SetBackground(StringList *list, Color color)
     list->background = color;
 }
 
+static inline void
+InsertSeparators(StringList *list, Arena *arena, String separator, StringSeparatorFlags flags = 0)
+{
+    // I hate inserting in the middle of linked lists with tail pointers,
+    // maybe that's just because I've never thought about how to really do
+    // it properly, but whatever. We'll just make a new list with the same
+    // nodes. Inefficient? Yeah!!!! Whatever!!!!!
+
+    bool separator_before_first = !!(flags & StringSeparator_BeforeFirst);
+    bool separator_after_last = !!(flags & StringSeparator_AfterLast);
+
+    StringList new_list = {};
+
+    if (separator_before_first)
+    {
+        PushString(&new_list, arena, separator);
+    }
+
+    for (StringNode *node = list->first;
+         node;
+         )
+    {
+        StringNode *next_node = node->next;
+
+        new_list.foreground = node->foreground;
+        new_list.background = node->background;
+
+        AddNode(&new_list, node);
+        if (next_node)
+        {
+            PushString(&new_list, arena, separator);
+        }
+
+        node = next_node;
+    }
+
+    if (separator_after_last)
+    {
+        PushString(&new_list, arena, separator);
+    }
+
+    *list = new_list;
+}
+
 static inline String
-PushFlattenedString(StringList *list, Arena *arena, String separator = {}, StringFlattenFlags flags = 0)
+PushFlattenedString(StringList *list, Arena *arena, String separator = {}, StringSeparatorFlags flags = 0)
 {
     size_t total_size = list->total_size;
 
-    bool separator_before_first = !!(flags & StringFlatten_SeparatorBeforeFirst);
-    bool separator_after_last = !!(flags & StringFlatten_SeparatorAfterLast);
+    bool separator_before_first = !!(flags & StringSeparator_BeforeFirst);
+    bool separator_after_last = !!(flags & StringSeparator_AfterLast);
 
     size_t separator_count = 0;
     if (list->node_count > 0)
@@ -192,4 +236,10 @@ PushFlattenedString(StringList *list, Arena *arena, String separator = {}, Strin
 
     Assert(dest == (result.data + result.size));
     return result;
+}
+
+static inline String
+PushFlattenedTempString(StringList *list, String separator = {}, StringSeparatorFlags flags = 0)
+{
+    return PushFlattenedString(list, platform->GetTempArena(), separator, flags);
 }
