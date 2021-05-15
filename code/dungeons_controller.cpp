@@ -30,7 +30,7 @@ InitializeInputBindings(Arena *string_arena)
     input->f_keys[0].name = "F0? That's a problem."_str;
     for (size_t i = 1; i < ArrayCount(input->f_keys); ++i)
     {
-        input->f_keys[i].name = FormatString(string_arena, "F%zu", i);
+        input->f_keys[i].name = PushStringF(string_arena, "F%zu", i);
     }
 
     input->binding_map['W']                          = &input->north;

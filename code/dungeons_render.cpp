@@ -137,7 +137,7 @@ ScreenToWorld(V2i p)
 {
     p.x /= render_state->world_font->glyph_w;
     p.y /= render_state->world_font->glyph_h;
-    p -= render_state->camera_bottom_left;
+    p += render_state->camera_bottom_left;
     return p;
 }
 
@@ -348,7 +348,7 @@ EndPushRenderCommand(RenderCommand *command)
 }
 
 static inline void
-PushTile(RenderLayer layer, V2i tile_p, Sprite sprite)
+DrawTile(RenderLayer layer, V2i tile_p, Sprite sprite)
 {
     RenderCommand *command = PushRenderCommand(layer, RenderCommand_Sprite);
     command->p = tile_p;
@@ -356,7 +356,7 @@ PushTile(RenderLayer layer, V2i tile_p, Sprite sprite)
 }
 
 static inline void
-PushText(RenderLayer layer, V2i p, String text, Color foreground, Color background)
+DrawText(RenderLayer layer, V2i p, String text, Color foreground, Color background)
 {
     V2i at = p;
 
@@ -367,13 +367,178 @@ PushText(RenderLayer layer, V2i p, String text, Color foreground, Color backgrou
     for (size_t i = 0; i < text.size; ++i)
     {
         sprite.glyph = text.data[i];
-        PushTile(layer, at, sprite);
+        DrawTile(layer, at, sprite);
         at.x += 1;
     }
 }
 
 static inline void
-PushRect(RenderLayer layer, const Rect2i &rect, Color color)
+DrawStringList(RenderLayer layer, StringList *list, V2i p, StringRenderSpec spec = {})
+{
+    if (spec.horizontal_advance == 0)
+    {
+        spec.horizontal_advance = 1;
+    }
+
+    if (spec.vertical_advance == 0)
+    {
+        spec.vertical_advance = -1;
+    }
+
+    int abs_horizontal_advance = Abs(spec.horizontal_advance);
+    int sign_horizontal_advance = SignOf(spec.horizontal_advance);
+
+    int abs_vertical_advance = Abs(spec.vertical_advance);
+
+    int total_w = 0;
+    int total_h = 1;
+
+    int current_w = 0;
+    for (StringNode *node = list->first;
+         node;
+         node = node->next)
+    {
+        String string = node->string;
+        for (size_t i = 0; i < string.size; i += 1)
+        {
+            if (string.data[i] == '\n')
+            {
+                total_h += 1;
+                current_w = 0;
+            }
+            else
+            {
+                current_w += 1;
+            }
+
+            if (total_w < current_w)
+            {
+                total_w = current_w;
+            }
+        }
+    }
+
+    total_w *= abs_horizontal_advance;
+    total_h *= abs_vertical_advance;
+
+    V2i start_p = p;
+    if (spec.vertical_advance > 0)
+    {
+        if (spec.vertical_align == Align_Center)
+        {
+            start_p.y -= total_h / 2;
+        }
+        else if (spec.vertical_align == Align_Top)
+        {
+            start_p.y -= total_h - 1;
+        }
+    }
+    else
+    {
+        if (spec.vertical_align == Align_Center)
+        {
+            start_p.y += total_h / 2;
+        }
+        else if (spec.vertical_align == Align_Left)
+        {
+            start_p.y += total_h - 1;
+        }
+    }
+
+    V2i at_p = start_p;
+    size_t scan_at = 0;
+    StringNode *scan_node  = list->first;
+    while (scan_node)
+    {
+        int line_w = 0;
+
+        size_t print_at = scan_at;
+        size_t print_end_at = print_at;
+        StringNode *print_node = scan_node;
+
+        while (scan_node)
+        {
+            String *scan = &scan_node->string;
+            if (scan_at < scan->size)
+            {
+                uint8_t glyph = scan->data[scan_at];
+                scan_at += 1;
+                line_w += 1;
+
+                if (glyph == '\n')
+                {
+                    break;
+                }
+
+                print_end_at = scan_at;
+            }
+            else
+            {
+                scan_node = scan_node->next;
+                scan_at = 0;
+                print_end_at = 0;
+            }
+        }
+
+        line_w *= abs_horizontal_advance;
+
+        at_p.x = start_p.x;
+        if (spec.horizontal_advance > 0)
+        {
+            if (spec.horizontal_align == Align_Center)
+            {
+                at_p.x -= line_w / 2;
+            }
+            else if (spec.horizontal_align == Align_Right)
+            {
+                at_p.x -= line_w - 1;
+            }
+        }
+        else
+        {
+            if (spec.horizontal_align == Align_Center)
+            {
+                at_p.x += line_w / 2;
+            }
+            else if (spec.horizontal_align == Align_Left)
+            {
+                at_p.x += line_w - 1;
+            }
+        }
+
+        while (!((print_node == scan_node) &&
+                 (print_at   == print_end_at)))
+        {
+            String *print = &print_node->string;
+            if (print_at < print->size)
+            {
+                uint8_t glyph = print->data[print_at];
+                print_at += 1;
+
+                Sprite sprite = MakeSprite(glyph, print_node->foreground, print_node->background);
+                DrawTile(layer, at_p, sprite);
+                at_p.x += sign_horizontal_advance;
+
+                sprite.glyph = ' ';
+                for (int i = 1; i < abs_horizontal_advance; i += 1)
+                {
+                    DrawTile(layer, at_p, sprite);
+                    at_p.x += sign_horizontal_advance;
+                }
+            }
+            else
+            {
+                print_node = print_node->next;
+                print_at = 0;
+            }
+        }
+
+        at_p.y += spec.vertical_advance;
+    }
+}
+
+static inline void
+DrawRect(RenderLayer layer, const Rect2i &rect, Color color)
 {
     RenderCommand *command = PushRenderCommand(layer, RenderCommand_Rect);
     command->rect = rect;
@@ -381,7 +546,7 @@ PushRect(RenderLayer layer, const Rect2i &rect, Color color)
 }
 
 static inline void
-PushRectOutline(RenderLayer layer, const Rect2i &rect, Color foreground, Color background)
+DrawRectOutline(RenderLayer layer, const Rect2i &rect, Color foreground, Color background)
 {
     uint32_t left   = Wall_Left;
     uint32_t right  = Wall_Right;
@@ -400,23 +565,23 @@ PushRectOutline(RenderLayer layer, const Rect2i &rect, Color foreground, Color b
     }
 #endif
 
-    PushRect(layer, MakeRect2iMinMax(rect.min + MakeV2i(1, 1), rect.max - MakeV2i(1, 1)), background);
+    DrawRect(layer, MakeRect2iMinMax(rect.min + MakeV2i(1, 1), rect.max - MakeV2i(1, 1)), background);
 
-    PushTile(layer, rect.min, MakeWall(right|top, foreground, background));
-    PushTile(layer, MakeV2i(rect.max.x - 1, rect.min.y), MakeWall(left|top, foreground, background));
-    PushTile(layer, rect.max - MakeV2i(1, 1), MakeWall(left|bottom, foreground, background));
-    PushTile(layer, MakeV2i(rect.min.x, rect.max.y - 1), MakeWall(right|bottom, foreground, background));
+    DrawTile(layer, rect.min, MakeWall(right|top, foreground, background));
+    DrawTile(layer, MakeV2i(rect.max.x - 1, rect.min.y), MakeWall(left|top, foreground, background));
+    DrawTile(layer, rect.max - MakeV2i(1, 1), MakeWall(left|bottom, foreground, background));
+    DrawTile(layer, MakeV2i(rect.min.x, rect.max.y - 1), MakeWall(right|bottom, foreground, background));
 
     for (int32_t x = rect.min.x + 1; x < rect.max.x - 1; ++x)
     {
-        PushTile(layer, MakeV2i(x, rect.min.y), MakeWall(left|right, foreground, background));
-        PushTile(layer, MakeV2i(x, rect.max.y - 1), MakeWall(left|right, foreground, background));
+        DrawTile(layer, MakeV2i(x, rect.min.y), MakeWall(left|right, foreground, background));
+        DrawTile(layer, MakeV2i(x, rect.max.y - 1), MakeWall(left|right, foreground, background));
     }
 
     for (int32_t y = rect.min.y + 1; y < rect.max.y - 1; ++y)
     {
-        PushTile(layer, MakeV2i(rect.min.x, y), MakeWall(top|bottom, foreground, background));
-        PushTile(layer, MakeV2i(rect.max.x - 1, y), MakeWall(top|bottom, foreground, background));
+        DrawTile(layer, MakeV2i(rect.min.x, y), MakeWall(top|bottom, foreground, background));
+        DrawTile(layer, MakeV2i(rect.max.x - 1, y), MakeWall(top|bottom, foreground, background));
     }
 }
 
@@ -476,7 +641,7 @@ PLATFORM_JOB(TiledRenderJob)
                 V3 light = MakeV3(1);
                 if (LayerUsesCamera((RenderLayer)at->layer))
                 {
-                    light = render_state->light_map.map[p.y][p.x];
+                    // light = render_state->light_map.map[p.y][p.x];
                     p -= render_state->camera_bottom_left;
                 }
 

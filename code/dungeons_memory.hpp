@@ -4,30 +4,30 @@
 #define DEFAULT_ARENA_CAPACITY Gigabytes(8)
 
 static inline size_t
-GetAlignOffset(Arena *arena, size_t Align)
+GetAlignOffset(Arena *arena, size_t align)
 {
-    size_t Offset = (size_t)(arena->base + arena->used) & (Align - 1);
-    if (Offset)
+    size_t offset = (size_t)(arena->base + arena->used) & (align - 1);
+    if (offset)
     {
-        Offset = Align - Offset;
+        offset = align - offset;
     }
-    return Offset;
+    return offset;
 }
 
-static inline char *
-GetNextAllocationLocation(Arena *arena, size_t Align)
+static inline uint8_t *
+GetNextAllocationLocation(Arena *arena, size_t align)
 {
-    size_t AlignOffset = GetAlignOffset(arena, Align);
-    char* Result = arena->base + arena->used + AlignOffset;
-    return Result;
+    size_t align_offset = GetAlignOffset(arena, align);
+    uint8_t *result = arena->base + arena->used + align_offset;
+    return result;
 }
 
 static inline size_t
 GetSizeRemaining(Arena *arena, size_t Align)
 {
-    size_t AlignOffset = GetAlignOffset(arena, Align);
-    size_t Result = arena->capacity - (arena->used + AlignOffset);
-    return Result;
+    size_t align_offset = GetAlignOffset(arena, Align);
+    size_t result = arena->capacity - (arena->used + align_offset);
+    return result;
 }
 
 static inline void
@@ -46,10 +46,10 @@ Release(Arena *arena)
 }
 
 static inline void
-ResetTo(Arena *arena, char *Target)
+ResetTo(Arena *arena, uint8_t *target)
 {
-    Assert((Target >= arena->base) && (Target <= (arena->base + arena->used)));
-    arena->used = (Target - arena->base);
+    Assert((target >= arena->base) && (target <= (arena->base + arena->used)));
+    arena->used = (target - arena->base);
 }
 
 static inline void
@@ -61,15 +61,15 @@ SetCapacity(Arena *arena, size_t capacity)
 }
 
 static inline void
-InitWithMemory(Arena *arena, size_t MemorySize, void *Memory)
+InitWithMemory(Arena *arena, size_t memory_size, void *memory)
 {
     ZeroStruct(arena);
-    arena->capacity = MemorySize;
+    arena->capacity = memory_size;
     // NOTE: There's an assumption here that the memory passed in is valid, committed memory.
     //       If you want an Arena that exploits virtual memory to progressively commit, you
     //       shouldn't init it with any existing memory.
-    arena->committed = MemorySize;
-    arena->base = (char *)Memory;
+    arena->committed = memory_size;
+    arena->base = (uint8_t *)memory;
 }
 
 static inline void
@@ -119,32 +119,32 @@ PushSize_(Arena *arena, size_t Size, size_t Align, bool Clear, const char *Tag)
         // NOTE: Let's align up to page size because that's the minimum allocation granularity anyway,
         //       and the code doing the commit down below assumes our capacity is page aligned.
         arena->capacity = AlignPow2(arena->capacity, platform->page_size);
-        arena->base = (char *)platform->ReserveMemory(arena->capacity, PlatformMemFlag_NoLeakCheck, Tag);
+        arena->base = (uint8_t *)platform->ReserveMemory(arena->capacity, PlatformMemFlag_NoLeakCheck, Tag);
     }
 
-    size_t AlignOffset = GetAlignOffset(arena, Align);
-    size_t AlignedSize = Size + AlignOffset;
+    size_t align_offset = GetAlignOffset(arena, Align);
+    size_t aligned_size = Size + align_offset;
 
-    Assert((arena->used + AlignedSize) <= arena->capacity);
+    Assert((arena->used + aligned_size) <= arena->capacity);
 
-    char *Unalignedbase = arena->base + arena->used;
+    uint8_t *unaligned_base = arena->base + arena->used;
 
-    if (arena->committed < (arena->used + AlignedSize))
+    if (arena->committed < (arena->used + aligned_size))
     {
-        size_t CommitSize = AlignPow2(AlignedSize, platform->page_size);
+        size_t CommitSize = AlignPow2(aligned_size, platform->page_size);
         platform->CommitMemory(arena->base + arena->committed, CommitSize);
         arena->committed += CommitSize;
-        Assert(arena->committed >= (arena->used + AlignedSize));
+        Assert(arena->committed >= (arena->used + aligned_size));
     }
 
-    void *Result = Unalignedbase + AlignOffset;
-    arena->used += AlignedSize;
+    void *result = unaligned_base + align_offset;
+    arena->used += aligned_size;
 
     if (Clear) {
-        ZeroSize(AlignedSize, Result);
+        ZeroSize(aligned_size, result);
     }
 
-    return Result;
+    return result;
 }
 
 #define BootstrapPushStruct(Type, Member, ...)                                        \
@@ -240,6 +240,17 @@ PushArrayContainer(Arena *arena, size_t capacity)
     {
         result.data = PushArray(arena, capacity, T);
     }
+    return result;
+}
+
+static inline String
+PushString(Arena *arena, String string)
+{
+    String result = {};
+    result.size = string.size;
+    result.data = PushArray(arena, result.size + 1, uint8_t);
+    CopySize(result.size, string.data, result.data);
+    result.data[result.size] = 0;
     return result;
 }
 

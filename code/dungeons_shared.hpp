@@ -7,18 +7,6 @@ IsPow2(size_t size)
     return (size != 0 && (size & (size - 1)) == 0);
 }
 
-// TODO: where tf do I put this
-DUNGEONS_INLINE Color
-MakeColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255)
-{
-    Color color;
-    color.r = r;
-    color.g = g;
-    color.b = b;
-    color.a = a;
-    return color;
-}
-
 #define COLOR_BLACK MakeColor(0, 0, 0)
 #define COLOR_WHITE MakeColor(255, 255, 255)
 

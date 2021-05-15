@@ -11,6 +11,7 @@
 #include "dungeons_intrinsics.hpp"
 #include "dungeons_shared.hpp"
 #include "dungeons_memory.hpp"
+#include "dungeons_string.hpp"
 #include "dungeons_global_state.hpp"
 #include "dungeons_math.hpp"
 #include "dungeons_random.hpp"

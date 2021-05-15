@@ -279,8 +279,8 @@ AppUpdateAndRender(Platform *platform_)
             GenTile tile = GetTile(game_state->gen_tiles, p);
             if (game_state->debug_fullbright || SeenByPlayer(game_state->gen_tiles, MakeV2i(x, y)))
             {
-                // VisibilityGrid *grid = player ? player->visibility_grid : nullptr;
-                bool currently_visible = true; // game_state->debug_fullbright || IsVisible(grid, p);
+                VisibilityGrid *grid = player ? player->visibility_grid : nullptr;
+                bool currently_visible = game_state->debug_fullbright || IsVisible(grid, p);
                 float visibility_mod = currently_visible ? 1.0f : 0.5f;
 
                 if (tile == GenTile_Room)
@@ -295,7 +295,7 @@ AppUpdateAndRender(Platform *platform_)
                     {
                         sprite = MakeSprite('=', LinearToSRGB(perlin*perlin*visibility_mod*MakeColorF(0.85f, 0.45f, 0.0f)));
                     }
-                    PushTile(Layer_Ground, MakeV2i(x, y), sprite);
+                    DrawTile(Layer_Ground, MakeV2i(x, y), sprite);
                 }
                 else
                 {
@@ -307,7 +307,7 @@ AppUpdateAndRender(Platform *platform_)
                         color *= 3.0f;
                     }
                     Color foreground = LinearToSRGB(color);
-                    PushTile(Layer_Ground, MakeV2i(x, y), MakeSprite(Glyph_Tone25, foreground));
+                    DrawTile(Layer_Ground, MakeV2i(x, y), MakeSprite(Glyph_Tone25, foreground));
                 }
             }
         }
@@ -322,12 +322,32 @@ AppUpdateAndRender(Platform *platform_)
              line;
              line = platform->GetNextLogLine(line))
         {
-            PushText(Layer_Ui, at_p, line->string, COLOR_WHITE, COLOR_BLACK);
+            DrawText(Layer_Ui, at_p, line->string, COLOR_WHITE, COLOR_BLACK);
             at_p.y -= 1;
         }
     }
 
-    CalculateLightMap(&render_state->light_map);
+    StringRenderSpec spec = {};
+    spec.horizontal_align = Align_Left;
+    spec.horizontal_advance = 1;
+
+    StringList list = {};
+    PushTStringF(&list, "Test 1 2 3\n");
+    SetForeground(&list, MakeColor(255, 0, 0));
+    PushTStringF(&list, "Test 1 2 3 4\n");
+    SetForeground(&list, MakeColor(0, 255, 0));
+    PushTStringF(&list, "Test 1 2 3 beans\n");
+    SetForeground(&list, MakeColor(255, 255, 255));
+    PushTStringF(&list, "Test");
+    SetBackground(&list, MakeColor(0, 0, 255));
+    PushTStringF(&list, " one");
+    SetBackground(&list, MakeColor(0, 0, 0));
+    PushTStringF(&list, " two");
+    SetBackground(&list, MakeColor(0, 0, 255));
+    PushTStringF(&list, " three\n");
+    DrawStringList(Layer_World, &list, input->world_mouse_p, spec);
+
+    // CalculateLightMap(&render_state->light_map);
     EndRender();
 
     if (Pressed(input->interact))

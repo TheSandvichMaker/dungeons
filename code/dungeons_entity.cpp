@@ -799,7 +799,7 @@ DrawEntityList(EntityList *list, Rect2i rect, int highlight_index = -1)
     rect.max.y = Min(rect.max.y, rect.min.y + (int)items.count + 2);
     rect.max.y = Max(rect.min.y + 3, rect.max.y);
 
-    PushRectOutline(Layer_Ui, rect, COLOR_WHITE, COLOR_BLACK);
+    DrawRectOutline(Layer_Ui, rect, COLOR_WHITE, COLOR_BLACK);
 
     V2i at_p = MakeV2i(rect.min.x + 3, rect.max.y - 2);
 
@@ -814,10 +814,10 @@ DrawEntityList(EntityList *list, Rect2i rect, int highlight_index = -1)
             text_color = COLOR_WHITE;
         }
 
-        PushTile(Layer_Ui, at_p - MakeV2i(1, 0), item->sprites[item->sprite_index]);
+        DrawTile(Layer_Ui, at_p - MakeV2i(1, 0), item->sprites[item->sprite_index]);
 
-        String text = FormatTempString(" %4d %.*s ", item->amount, StringExpand(item->name));
-        PushText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
+        String text = PushTStringF(" %4d %.*s ", item->amount, StringExpand(item->name));
+        DrawText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
 
         at_p.y -= 1;
         item_index += 1;
@@ -826,8 +826,8 @@ DrawEntityList(EntityList *list, Rect2i rect, int highlight_index = -1)
     if (!items.count)
     {
         Color text_color = MakeColor(127, 127, 127);
-        String text = FormatTempString("  Nothing here...");
-        PushText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
+        String text = PushTStringF("  Nothing here...");
+        DrawText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
     }
 }
 
@@ -1310,12 +1310,11 @@ UpdateAndRenderEntities(void)
     entity_manager->block_simulation = false;
 
     Font *world_font = render_state->world_font;
+
     Entity *player = entity_manager->player;
-    if (player)
-    {
-        V2i render_tile_dim = MakeV2i(platform->render_w / world_font->glyph_w, platform->render_h / world_font->glyph_h);
-        render_state->camera_bottom_left = player->p - render_tile_dim / 2;
-    }
+
+    V2i render_tile_dim = MakeV2i(platform->render_w / world_font->glyph_w, platform->render_h / world_font->glyph_h);
+    render_state->camera_bottom_left = player->p - render_tile_dim / 2;
 
     int viewport_w = (platform->render_w + world_font->glyph_w - 1) / world_font->glyph_w;
     int viewport_h = (platform->render_h + world_font->glyph_h - 1) / world_font->glyph_h;
@@ -1371,7 +1370,7 @@ UpdateAndRenderEntities(void)
             draw |= game_state->debug_fullbright;
             if (draw)
             {
-                bool visible = IsVisible(&entity_manager->player_visibility, e->p);
+                bool visible = IsVisible(player->visibility_grid, e->p);
                 visible |= game_state->debug_fullbright;
                 if (!visible)
                 {
@@ -1387,7 +1386,7 @@ UpdateAndRenderEntities(void)
                 {
                     layer = Layer_Floor;
                 }
-                PushTile(layer, e->p, sprite);
+                DrawTile(layer, e->p, sprite);
             }
 
             CleanStaleReferences(&e->inventory);

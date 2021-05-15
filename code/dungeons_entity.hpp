@@ -188,7 +188,8 @@ struct EntityManager
 
     Entity *player;
     Entity *looking_at_container;
-    VisibilityGrid player_visibility;
+
+    Entity null_entity;
 
     int container_selection_index;
 

@@ -86,17 +86,12 @@
 #include "dungeons_intrinsics.hpp"
 
 #if COMPILER_MSVC
+
+#define ALWAYS_INLINE __forceinline
+
 #define _AMD64_
 #include <windef.h>
-#endif
 
-struct TicketMutex
-{
-    volatile uint32_t ticket;
-    volatile uint32_t serving;
-};
-
-#if COMPILER_MSVC
 static inline uint32_t
 AtomicAdd(volatile uint32_t *dest, uint32_t value)
 {
@@ -104,9 +99,16 @@ AtomicAdd(volatile uint32_t *dest, uint32_t value)
     uint32_t result = (uint32_t)_InterlockedExchangeAdd((volatile LONG *)dest, value);
     return result;
 }
-#else
-// todo...
+#elif COMPILER_LLVM
+// TODO: Force inline
+// TODO: Atomics
 #endif
+
+struct TicketMutex
+{
+    volatile uint32_t ticket;
+    volatile uint32_t serving;
+};
 
 static inline void
 BeginTicketMutex(TicketMutex *mutex)

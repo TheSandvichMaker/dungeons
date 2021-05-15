@@ -381,6 +381,12 @@ SafeRatio1(float numerator, float divisor)
     return result;
 }
 
+DUNGEONS_INLINE int
+SignOf(int a)
+{
+    return (a >= 0 ? 1 : -1);
+}
+
 DUNGEONS_INLINE float
 SignOf(float a)
 {
@@ -994,6 +1000,17 @@ MakeRect2iMinMax(V2i min, V2i max)
     Rect2i result;
     result.min = min;
     result.max = max;
+    return result;
+}
+
+DUNGEONS_INLINE Rect2i
+MakeRect2iInvertedInfinity(void)
+{
+    Rect2i result;
+    result.min.x = INT32_MAX;
+    result.min.y = INT32_MAX;
+    result.max.x = INT32_MIN;
+    result.max.y = INT32_MIN;
     return result;
 }
 
