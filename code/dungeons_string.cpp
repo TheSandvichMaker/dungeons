@@ -66,7 +66,7 @@ PushTempStringF(const char *fmt, ...)
 static inline bool
 IsEmpty(StringList *list)
 {
-    bool result = !!list->first;
+    bool result = !list->first;
     return result;
 }
 

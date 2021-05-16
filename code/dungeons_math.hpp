@@ -1115,6 +1115,15 @@ MakeRect2iCenterHalfDim(V2i center, V2i half_dim)
     return result;
 }
 
+DUNGEONS_INLINE Rect2i
+GrowOutwardHalfDim(Rect2i rect, V2i half_dim)
+{
+    Rect2i result;
+    result.min = rect.min - half_dim;
+    result.max = rect.max - half_dim;
+    return result;
+}
+
 DUNGEONS_INLINE int32_t
 GetWidth(Rect2i a)
 {
@@ -1194,7 +1203,7 @@ GrowToContain(Rect2i a, V2i p)
 {
     Rect2i result;
     result.min = Min(a.min, p);
-    result.max = Max(a.max, p);
+    result.max = Max(a.max, MakeV2i(1, 1) + p);
     return result;
 }
 

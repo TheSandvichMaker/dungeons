@@ -141,6 +141,16 @@ ScreenToWorld(V2i p)
     return p;
 }
 
+static inline V2i
+WorldToUi(V2i p)
+{
+    p -= render_state->camera_bottom_left;
+    p.x *= render_state->world_font->glyph_w / render_state->ui_font->glyph_w;
+    p.y *= render_state->ui_font->glyph_h;
+    p.y /= render_state->world_font->glyph_h;
+    return p;
+}
+
 static inline void
 ClearBitmap(Bitmap *bitmap, Color clear_color = MakeColor(0, 0, 0, 0))
 {
@@ -372,9 +382,12 @@ DrawText(RenderLayer layer, V2i p, String text, Color foreground, Color backgrou
     }
 }
 
-static inline void
-DrawStringList(RenderLayer layer, V2i p, StringList *list, StringRenderSpec spec = {})
+static inline Rect2i
+DoStringListOp(StringListOp op, RenderLayer layer, V2i p, StringList *list, StringRenderSpec spec = {})
 {
+    Rect2i area = MakeRect2iInvertedInfinity();
+
+    int buffered_newlines = 0;
     int total_w = 0;
     int total_h = 1;
 
@@ -388,11 +401,14 @@ DrawStringList(RenderLayer layer, V2i p, StringList *list, StringRenderSpec spec
         {
             if (string.data[i] == '\n')
             {
-                total_h += 1;
+                buffered_newlines += 1;
                 current_w = 0;
             }
             else
             {
+                total_h += buffered_newlines;
+                buffered_newlines = 0;
+
                 current_w += 1;
             }
 
@@ -459,8 +475,13 @@ DrawStringList(RenderLayer layer, V2i p, StringList *list, StringRenderSpec spec
                 uint8_t glyph = print->data[print_at];
                 print_at += 1;
 
-                Sprite sprite = MakeSprite(glyph, print_node->foreground, print_node->background);
-                DrawTile(layer, V2iFromV2Round(at_p), sprite);
+                if (op == StringListOp_Draw)
+                {
+                    Sprite sprite = MakeSprite(glyph, print_node->foreground, print_node->background);
+                    DrawTile(layer, V2iFromV2Round(at_p), sprite);
+                }
+
+                area = GrowToContain(area, V2iFromV2Round(at_p));
 
                 at_p += spec.x_axis;
             }
@@ -473,6 +494,20 @@ DrawStringList(RenderLayer layer, V2i p, StringList *list, StringRenderSpec spec
 
         line_offset += 1;
     }
+
+    return area;
+}
+
+static inline Rect2i
+DrawStringList(RenderLayer layer, V2i p, StringList *list, StringRenderSpec spec = {})
+{
+    return DoStringListOp(StringListOp_Draw, layer, p, list, spec);
+}
+
+static inline Rect2i
+GetDrawnStringListBounds(RenderLayer layer, V2i p, StringList *list, StringRenderSpec spec = {})
+{
+    return DoStringListOp(StringListOp_GetBounds, layer, p, list, spec);
 }
 
 static inline void

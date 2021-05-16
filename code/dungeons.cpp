@@ -327,30 +327,29 @@ AppUpdateAndRender(Platform *platform_)
         }
     }
 
-    static float dumb_timer = 0.0f;
-    dumb_timer += platform->dt;
+    {
+        StringList list = {};
+        for (Entity *e: GetEntitiesAt(input->world_mouse_p))
+        {
+            if (e->seen_by_player)
+            {
+                EntityToString(e, &list);
+            }
+        }
 
-    StringList list = {};
-    PushTempStringF(&list, "Test 1 2 3\n");
-    SetForeground(&list, MakeColor(255, 0, 0));
-    PushTempStringF(&list, "Test 1 2 3 4\n");
-    SetForeground(&list, MakeColor(0, 255, 0));
-    PushTempStringF(&list, "Test 1 2 3 beans\n");
-    SetForeground(&list, MakeColor(255, 255, 255));
-    PushTempStringF(&list, "Test");
-    SetBackground(&list, MakeColor(0, 0, 255));
-    PushTempStringF(&list, " one");
-    SetBackground(&list, MakeColor(0, 0, 0));
-    PushTempStringF(&list, " two");
-    SetBackground(&list, MakeColor(0, 0, 255));
-    PushTempStringF(&list, " three\n");
+        if (!IsEmpty(&list))
+        {
+            V2i p = WorldToUi(MakeV2i(0, 1) + input->world_mouse_p);
 
-    StringRenderSpec spec = {};
-    spec.x_align_percentage = 0.5f + 0.5f*Sin(dumb_timer);
-    spec.x_axis = MakeV2(1, 0);
-    spec.y_axis = MakeV2(0,-1);
+            StringRenderSpec spec = {};
+            spec.y_align_percentage = 1.0f;
 
-    DrawStringList(Layer_Ui, input->ui_mouse_p, &list, spec);
+            Rect2i bounds = GetDrawnStringListBounds(Layer_Ui, p, &list, spec);
+            DrawRect(Layer_Ui, bounds, COLOR_BLACK);
+
+            DrawStringList(Layer_Ui, p, &list, spec);
+        }
+    }
 
     // CalculateLightMap(&render_state->light_map);
     EndRender();

@@ -471,6 +471,8 @@ PLATFORM_JOB(DoWorldGen)
 
     Entity *chest_key = AddEntity(StringLiteral("Chest Key"), player_spawn_p - MakeV2i(2, 0), MakeSprite(Glyph_Male, MakeColor(125, 255, 0)));
     SetContactTrigger(chest_key, Trigger_PickUp);
+
+    AddGold(player_spawn_p - MakeV2i(2, 0), 100);
     
     Entity *chest = AddChest(player_spawn_p + MakeV2i(2, 0));
     LockWithKey(chest, chest_key);

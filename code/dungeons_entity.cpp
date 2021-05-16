@@ -268,7 +268,7 @@ AddPlayer(V2i p)
     Entity *e = AddEntity(StringLiteral("Player"), p, MakeSprite('@', MakeColor(255, 255, 0)));
     SetProperties(e, EntityProperty_PlayerControlled|EntityProperty_BlockMovement|EntityProperty_BlockSight|EntityProperty_HasVisibilityGrid);
 
-    e->health = 100;
+    e->health = e->max_health = 100;
     e->faction = Faction_Human;
 
     Assert(!entity_manager->player);
@@ -281,7 +281,7 @@ static inline Entity *
 AddOrc(V2i p)
 {
     Entity *e = AddEntity(StringLiteral("Orc"), p, MakeSprite('O', MakeColor(126, 192, 95)));
-    e->health = 3;
+    e->health = e->max_health = 3;
     e->speed = 125;
     e->ai = Ai_StandardHumanoid;
     e->faction = Faction_Monster;
@@ -1411,5 +1411,66 @@ UpdateAndRenderEntities(void)
         {
             DrawEntityList(&container->inventory, MakeRect2iMinDim(2, 2, 24, 16), entity_manager->container_selection_index);
         }
+    }
+}
+
+static inline void
+EntityToString(Entity *e, StringList *list)
+{
+    Color orig_foreground = list->foreground;
+    Color orig_background = list->background;
+
+    SetForeground(list, e->sprites[e->sprite_index].foreground);
+    SetBackground(list, e->sprites[e->sprite_index].background);
+
+    PushTempStringF(list, " %c ", e->sprites[e->sprite_index].glyph);
+
+    SetForeground(list, orig_foreground);
+    SetBackground(list, orig_background);
+
+    PushTempStringF(list, " ");
+
+    if (e->amount > 1)
+    {
+        PushTempStringF(list, "%d ", e->amount);
+    }
+    PushTempStringF(list, "%.*s", StringExpand(e->name));
+
+    if (e->faction)
+    {
+        PushTempStringF(list, " (%s)", FactionName(e->faction));
+    }
+
+    if (e->required_key != NullEntityHandle())
+    {
+        if (e->open)
+        {
+            PushTempStringF(list, " (unlocked)");
+        }
+        else
+        {
+            PushTempStringF(list, " (locked)");
+        }
+    }
+
+    PushTempStringF(list, " \n");
+
+    if (e->max_health > 0)
+    {
+        SetForeground(list, MakeColor(255, 0, 0));
+        PushTempStringF(list, "    HP: %d/%d \n", e->health, e->max_health);
+    }
+
+    SetForeground(list, orig_foreground);
+    SetBackground(list, orig_background);
+
+    if (e->inventory.first)
+    {
+        PushTempStringF(list, "    Contents:\n");
+        for (Entity *item: Linearize(&e->inventory))
+        {
+            EntityToString(item, list);            
+        }
+        PushTempStringF(list, "\n");
     }
 }

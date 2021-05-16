@@ -97,6 +97,17 @@ enum FactionKind
     Faction_Monster,
 };
 
+static inline const char *
+FactionName(FactionKind kind)
+{
+    switch (kind)
+    {
+        case Faction_Human: return "Human";
+        case Faction_Monster: return "Monster";
+    }
+    return "No Faction";
+}
+
 static inline bool
 FactionIsHostileTo(FactionKind a, FactionKind b)
 {
@@ -155,6 +166,7 @@ struct Entity
 
     V2i p;
     int32_t health;
+    int32_t max_health;
 
     float flash_timer;
     Color flash_color;

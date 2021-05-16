@@ -139,6 +139,12 @@ enum AlignKind
     Align_End,
 };
 
+enum StringListOp
+{
+    StringListOp_GetBounds,
+    StringListOp_Draw,
+};
+
 struct StringRenderSpec
 {
     bool   wrap               = false;
