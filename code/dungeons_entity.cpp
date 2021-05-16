@@ -1266,6 +1266,23 @@ WarmUpEntityVisibilityGrids(void)
     }
 }
 
+static inline Sprite
+RenderEntityToSprite(Entity *e)
+{
+    Sprite sprite = e->sprites[e->sprite_index];
+    if (e->open)
+    {
+        sprite.foreground = MakeColor(sprite.foreground.r / 2,
+                                      sprite.foreground.g / 2,
+                                      sprite.foreground.b / 2);
+    }
+    if (e->flash_timer >= 0.0f)
+    {
+        sprite.foreground = e->flash_color;
+    }
+    return sprite;
+}
+
 static inline void
 UpdateAndRenderEntities(void)
 {
@@ -1333,14 +1350,7 @@ UpdateAndRenderEntities(void)
         V2i p = MakeV2i(x, y);
         for (Entity *e: GetEntitiesAt(p))
         {
-            Sprite sprite = e->sprites[e->sprite_index];
-            if (e->open)
-            {
-                sprite.foreground = MakeColor(sprite.foreground.r / 2,
-                                              sprite.foreground.g / 2,
-                                              sprite.foreground.b / 2);
-            }
-
+            Sprite sprite = RenderEntityToSprite(e);
             if (e->sprite_anim_timer >= e->sprite_anim_rate)
             {
                 e->sprite_anim_timer -= e->sprite_anim_rate;
@@ -1355,7 +1365,6 @@ UpdateAndRenderEntities(void)
 
             if (e->flash_timer >= 0.0f)
             {
-                sprite.foreground = e->flash_color;
                 e->flash_timer -= platform->dt;
                 done_animations = false;
             }
@@ -1420,10 +1429,11 @@ EntityToString(Entity *e, StringList *list)
     Color orig_foreground = list->foreground;
     Color orig_background = list->background;
 
-    SetForeground(list, e->sprites[e->sprite_index].foreground);
-    SetBackground(list, e->sprites[e->sprite_index].background);
+    Sprite as_sprite = RenderEntityToSprite(e);
 
-    PushTempStringF(list, " %c ", e->sprites[e->sprite_index].glyph);
+    SetForeground(list, as_sprite.foreground);
+    SetBackground(list, as_sprite.background);
+    PushTempStringF(list, " %c ", as_sprite.glyph);
 
     SetForeground(list, orig_foreground);
     SetBackground(list, orig_background);
