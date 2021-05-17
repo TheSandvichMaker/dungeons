@@ -195,6 +195,7 @@ MoveEntity(Entity *e, V2i p)
     entity_manager->entity_grid[p.x][p.y] = e;
 
     e->p = p;
+    SetProperty(e, EntityProperty_InWorld);
 
     return true;
 }
@@ -228,7 +229,6 @@ AddEntity(String name, V2i p, Sprite sprite, EntityPropertySet initial_propertie
 
         SetProperties(result, initial_properties);
         SetProperty(result, EntityProperty_Alive);
-        SetProperty(result, EntityProperty_InWorld);
 
         result->handle = { (uint32_t)(result - entity_manager->entities), gen };
         result->name = name;
@@ -313,9 +313,78 @@ AddChest(V2i p)
     return e;
 }
 
+static inline bool
+EntitiesAreSimilar(Entity *a, Entity *b)
+{
+    if (a->inventory.first) return false;
+    if (b->inventory.first) return false;
+    if (!AreEqual(a->name, b->name)) return false;
+    if (a->faction != b->faction) return false;
+    if (a->contact_trigger != b->contact_trigger) return false;
+    if (a->required_key != NullEntityHandle()) return false;
+    if (b->required_key != NullEntityHandle()) return false;
+    if (a->uses != b->uses) return false;
+    if (a->health != b->health) return false;
+    if (a->max_health != b->max_health) return false;
+    if (a->speed != b->speed) return false;
+    if (a->sprite_anim_rate != b->sprite_anim_rate) return false;
+    if (a->sprite_count != b->sprite_count) return false;
+    if (!MemoryIsEqual(sizeof(a->sprites), a->sprites, b->sprites)) return false;
+    if (!MemoryIsEqual(sizeof(a->properties), a->properties, b->properties)) return false;
+    return true;
+}
+
+static inline void
+AddToInventory(Entity *e, Entity *item)
+{
+    RemoveEntityFromGrid(item);
+    UnsetProperty(item, EntityProperty_InWorld);
+
+    for (Entity *test_item: Linearize(&e->inventory))
+    {
+        if (EntitiesAreSimilar(test_item, item))
+        {
+            test_item->amount += item->amount;
+            return;
+        }
+    }
+
+    EntityNode *node = NewEntityNode(item->handle);
+    SllQueuePush(e->inventory.first, e->inventory.last, node);
+}
+
+static inline void
+LockWithKey(Entity *e, Entity *key)
+{
+    Assert(e->required_key == NullEntityHandle());
+    e->required_key = key->handle;
+    e->open = false;
+    SetProperty(e, EntityProperty_Unlockable);
+
+    key->uses += 1;
+}
+
+static inline void
+GiveRandomLoot(Entity *e, RandomSeries *entropy)
+{
+    if (RandomChoice(entropy, 4) == 0)
+    {
+        AddToInventory(e, AddGold(MakeV2i(0, 0), RandomRange(entropy, 12, 36)));
+    }
+
+    if (RandomChoice(entropy, 10) == 0)
+    {
+        Entity *small_gem = AddEntity("Small Gem"_str, MakeV2i(0, 0), MakeSprite(Glyph_Diamond, MakeColor(0, 127, 255)));
+        SetContactTrigger(small_gem, Trigger_PickUp);
+        AddToInventory(e, small_gem);
+    }
+}
+
 static inline void
 KillEntity(Entity *e)
 {
+    V2i p = e->p;
+
     UnsetProperty(e, EntityProperty_Alive);
     RemoveEntityFromGrid(e);
     if (HasProperty(e, EntityProperty_PlayerControlled))
@@ -325,6 +394,12 @@ KillEntity(Entity *e)
     }
     e->next_free = entity_manager->first_free_entity;
     entity_manager->first_free_entity = e;
+
+    for (Entity *item: Pull(&e->inventory))
+    {
+        // Moving entities places them into the world, maybe a bit too much implicit behaviour?
+        MoveEntity(item, e->p);
+    }
 }
 
 struct EntityIter
@@ -716,27 +791,6 @@ FindPath(Arena *arena, V2i start, V2i target)
     }
 
     return result;
-}
-
-static inline void
-AddToInventory(Entity *e, Entity *item)
-{
-    RemoveEntityFromGrid(item);
-    UnsetProperty(item, EntityProperty_InWorld);
-
-    EntityNode *node = NewEntityNode(item->handle);
-    SllQueuePush(e->inventory.first, e->inventory.last, node);
-}
-
-static inline void
-LockWithKey(Entity *e, Entity *key)
-{
-    Assert(e->required_key == NullEntityHandle());
-    e->required_key = key->handle;
-    e->open = false;
-    SetProperty(e, EntityProperty_Unlockable);
-
-    key->uses += 1;
 }
 
 static inline bool
@@ -1276,7 +1330,7 @@ RenderEntityToSprite(Entity *e)
                                       sprite.foreground.g / 2,
                                       sprite.foreground.b / 2);
     }
-    if (e->flash_timer >= 0.0f)
+    if (e->flash_timer > 0.0f)
     {
         sprite.foreground = e->flash_color;
     }
@@ -1288,12 +1342,15 @@ UpdateAndRenderEntities(void)
 {
     if (!entity_manager->block_simulation && entity_manager->turn_timer <= 0.0f)
     {
+        Entity *player = entity_manager->player;
+        player->visibility_grid = PushAndCalculateVisibility(&entity_manager->turn_arena, player);
+
         if (PlayerAct())
         {
             NextTurn();
 
-            Entity *player = entity_manager->player;
-            player->visibility_grid = PushAndCalculateVisibility(&entity_manager->turn_arena, player);
+            // TODO: This stuff is way messy
+            CalculateVisibilityRecursiveShadowcast(player->visibility_grid, player);
 
             for (EntityIter iter = IterateAllEntities(); IsValid(iter); Next(&iter))
             {
@@ -1317,6 +1374,9 @@ UpdateAndRenderEntities(void)
                     e->visibility_grid = PushAndCalculateVisibility(&entity_manager->turn_arena, e);
                 }
             }
+
+            // TODO: This stuff is way messy
+            CalculateVisibilityRecursiveShadowcast(player->visibility_grid, player);
         }
     }
     else

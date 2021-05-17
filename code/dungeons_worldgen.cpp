@@ -455,6 +455,34 @@ PLATFORM_JOB(DoWorldGen)
             e = AddDoor(p);
         }
 
+        if (!e)
+        {
+            static const V2i directions[] =
+            {
+                MakeV2i(-1, -1), MakeV2i( 1, -1), MakeV2i(-1, 1), MakeV2i( 1,  1),
+                MakeV2i(-1,  0), MakeV2i( 1,  0), MakeV2i( 0, 1), MakeV2i( 0, -1),
+            };
+
+            int open_neighbor_count = 0;
+            for (int direction_index = 0; direction_index < ArrayCount(directions); ++direction_index)
+            {
+                V2i direction = directions[direction_index];
+                V2i test_p = p + direction;
+                if (Walkable(GetTile(tiles, test_p)))
+                {
+                    open_neighbor_count += 1;
+                }
+            }
+
+            if ((tile == GenTile_Room) &&
+                (open_neighbor_count >= 2 && open_neighbor_count <= 5) &&
+                (RandomChoice(&entropy, 60) == 0))
+            {
+                e = AddChest(p);
+                GiveRandomLoot(e, &entropy);
+            }
+        }
+
         if (e)
         {
             GenRoom *room = tiles->associated_rooms[IndexP(tiles, p)];
@@ -478,13 +506,14 @@ PLATFORM_JOB(DoWorldGen)
     LockWithKey(chest, chest_key);
     AddToInventory(chest, AddGold({}, 420));
 
-    Entity *leet_gold = AddGold({}, 1337);
-    leet_gold->name = StringLiteral("L33T G0LD");
-    AddToInventory(chest, leet_gold);
+    Entity *small_gem = AddEntity("Small Gem"_str, MakeV2i(0, 0), MakeSprite(Glyph_Diamond, MakeColor(0, 127, 255)));
+    SetContactTrigger(small_gem, Trigger_PickUp);
+    AddToInventory(chest, small_gem);
 
     entity_manager->light_source = AddEntity("Torch"_str, player_spawn_p - MakeV2i(7, 5), MakeSprite('6', MakeColor(255, 192, 128)));
 
-    AddOrc(player_spawn_p - MakeV2i(3, 3));
+    Entity *orc = AddOrc(player_spawn_p - MakeV2i(3, 3));
+    GiveRandomLoot(orc, &entropy);
 
     Entity *key = AddEntity(StringLiteral("Shiny Key"), {}, MakeSprite(Glyph_Male, MakeColor(255, 200, 0)));
     AddToInventory(chest, key);
