@@ -58,6 +58,15 @@ operator ""_str(const char *data, size_t size)
     return result;
 }
 
+static inline String
+MakeString(size_t size, const char *data)
+{
+    String result = {};
+    result.size = size;
+    result.data = (uint8_t *)data;
+    return result;
+}
+
 #define StringLiteral(c_string) Paste(c_string, _str)
 #define StringExpand(string) (int)(string).size, (char *)(string).data
 

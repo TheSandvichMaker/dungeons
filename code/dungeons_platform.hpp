@@ -46,6 +46,8 @@
 #define Expand_(x) x
 #define Expand(x) Expand(x)
 
+#define MACRO_VAR(var) Paste(var, __LINE__)
+
 #define BitIsSet(mask, bit) ((mask) & ((u64)1 << bit))
 #define SetBit(mask, bit)   ((mask) |= ((u64)1 << bit))
 #define UnsetBit(mask, bit) ((mask) &= ~((u64)1 << bit))
@@ -96,8 +98,32 @@ static inline uint32_t
 AtomicAdd(volatile uint32_t *dest, uint32_t value)
 {
     // NOTE: This returns the value _before_ adding
-    uint32_t result = (uint32_t)_InterlockedExchangeAdd((volatile LONG *)dest, value);
+    uint32_t result = (uint32_t)_InterlockedExchangeAdd((volatile long *)dest, value);
     return result;
+}
+
+static inline uint32_t
+AtomicIncrement(volatile uint32_t *dest)
+{
+    // NOTE: This returns the value _before_ adding
+    uint32_t result = (uint32_t)_InterlockedIncrement((volatile long *)dest) - 1;
+    return result;
+}
+
+static inline uint32_t
+AtomicExchange(volatile uint32_t *dest, uint32_t value)
+{
+    // NOTE: This returns the value _before_ exchanging
+    uint32_t result = (uint32_t)_InterlockedExchange((volatile long *)dest, value);
+    return result;
+}
+
+static inline uint32_t
+GetThreadID()
+{
+    uint8_t *thread_local_storage = (uint8_t *)__readgsqword(0x30);
+    uint32_t thread_id = *(uint32_t *)(thread_local_storage + 0x48);
+    return thread_id;
 }
 #elif COMPILER_LLVM
 // TODO: Force inline
@@ -129,7 +155,6 @@ EndTicketMutex(TicketMutex *mutex)
 enum PlatformEventType
 {
     PlatformEvent_None,
-    PlatformEvent_Any = PlatformEvent_None,
     PlatformEvent_MouseUp,
     PlatformEvent_MouseDown,
     PlatformEvent_KeyUp,
@@ -391,10 +416,16 @@ struct Platform
     bool exe_reloaded;
     void *persistent_app_data;
 
+#if DUNGEONS_INTERNAL
+    struct DebugState *debug_state;
+    struct DebugTable *debug_table;
+#endif
+
     float dt;
 
     PlatformEvent *first_event;
     PlatformEvent *last_event;
+    bool (*NextEvent)(PlatformEvent **out_event, PlatformEventFilter filter);
 
     int32_t mouse_x, mouse_y, mouse_y_flipped;
     int32_t mouse_dx, mouse_dy;
@@ -437,61 +468,20 @@ struct Platform
     void (*SleepThread)(int milliseconds);
 };
 
-static Platform *platform;
-
 static inline void
 LeaveUnhandled(PlatformEvent *event)
 {
     event->consumed_ = false;
 }
 
-static inline PlatformEvent *
-PopEvent(PlatformEventFilter filter = PlatformEventFilter_ANY)
-{
-    PlatformEvent *it = platform->first_event;
-    while (it->consumed_ || MatchFilter(it->type, filter))
-    {
-        it = it->next;
-    }
-    if (it)
-    {
-        it->consumed_ = true;
-    }
-    return it;
-}
-
-static inline bool
-NextEvent(PlatformEvent **out_event, PlatformEventFilter filter = PlatformEventFilter_ANY)
-{
-    bool result = false;
-
-    PlatformEvent *it = *out_event;
-    if (!it)
-    {
-        it = platform->first_event;
-    }
-    else
-    {
-        it = it->next;
-    }
-
-    while (it)
-    {
-        if (!it->consumed_ && MatchFilter(it->type, filter))
-        {
-            result = true;
-            it->consumed_ = true;
-            *out_event = it;
-            break;
-        }
-        it = it->next;
-    }
-
-    return result;
-}
+static Platform *platform;
 
 #define APP_UPDATE_AND_RENDER(name) void name(Platform *platform)
 typedef APP_UPDATE_AND_RENDER(AppUpdateAndRenderType);
 extern "C" DUNGEONS_EXPORT APP_UPDATE_AND_RENDER(AppUpdateAndRender);
+
+#if DUNGEONS_INTERNAL
+#include "dungeons_debug_interface.hpp"
+#endif
 
 #endif /* DUNGEONS_PLATFORM_HPP */

@@ -14,10 +14,45 @@ static WINDOWPLACEMENT g_window_position = { sizeof(g_window_position) };
 static Win32State win32_state;
 static Platform platform_;
 
+#if DUNGEONS_INTERNAL
+static DebugTable debug_table_;
+DebugTable *debug_table = &debug_table_;
+#endif
+
 extern "C"
 {
 __declspec(dllexport) unsigned long NvOptimusEnablement        = 1;
 __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+
+static inline bool
+Win32_NextEvent(PlatformEvent **out_event, PlatformEventFilter filter)
+{
+    bool result = false;
+
+    PlatformEvent *it = *out_event;
+    if (!it)
+    {
+        it = platform->first_event;
+    }
+    else
+    {
+        it = it->next;
+    }
+
+    while (it)
+    {
+        if (!it->consumed_ && MatchFilter(it->type, filter))
+        {
+            result = true;
+            it->consumed_ = true;
+            *out_event = it;
+            break;
+        }
+        it = it->next;
+    }
+
+    return result;
 }
 
 static void *
@@ -753,15 +788,25 @@ Win32_LoadAppCode(Win32AppCode *old_code)
         new_code.dll = LoadLibraryW(temp_dll_path);
         if (new_code.dll)
         {
-            new_code.last_write_time = Win32_GetLastWriteTime(dll_path);
-            new_code.UpdateAndRender = (AppUpdateAndRenderType *)GetProcAddress(new_code.dll, "AppUpdateAndRender");
-
             new_code.valid = true;
+
+            new_code.last_write_time = Win32_GetLastWriteTime(dll_path);
+
+            new_code.UpdateAndRender = (AppUpdateAndRenderType *)GetProcAddress(new_code.dll, "AppUpdateAndRender");
             if (!new_code.UpdateAndRender)
             {
                 new_code.valid = false;
                 Win32_DebugPrint("Could not load AppUpdateAndRender from app dll\n");
             }
+
+#if DUNGEONS_INTERNAL
+            new_code.DebugEndFrame = (AppDebugEndFrameType *)GetProcAddress(new_code.dll, "AppDebugEndFrame");
+            if (!new_code.DebugEndFrame)
+            {
+                new_code.valid = false;
+                Win32_DebugPrint("Could not load AppDebugEndFrame from app dll\n");
+            }
+#endif
 
             if (new_code.valid)
             {
@@ -962,7 +1007,12 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     PlatformJobQueue high_priority_queue = {};
     PlatformJobQueue  low_priority_queue = {};
 
+#if DUNGEONS_INTERNAL
+    platform->debug_table = debug_table;
+#endif
+
     platform->page_size = system_info.dwPageSize;
+    platform->NextEvent = Win32_NextEvent;
     platform->high_priority_queue = &high_priority_queue;
     platform->low_priority_queue = &low_priority_queue;
     platform->DebugPrint = Win32_DebugPrint;
@@ -1172,8 +1222,12 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
         if (app_code->valid)
         {
             app_code->UpdateAndRender(platform);
+#if DUNGEONS_INTERNAL
+            app_code->DebugEndFrame();
+#endif
             platform->exe_reloaded = false;
         }
+
         Win32_DisplayOffscreenBuffer(window, buffer);
 
         if (composition_enabled)

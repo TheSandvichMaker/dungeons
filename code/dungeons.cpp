@@ -8,6 +8,8 @@
 #include "dungeons_entity.cpp"
 #include "dungeons_worldgen.cpp"
 
+DebugTable *debug_table;
+
 // Ryan's text controls example: https://hatebin.com/ovcwtpsfmj
 
 static inline void
@@ -220,6 +222,9 @@ void
 AppUpdateAndRender(Platform *platform_)
 {
     platform = platform_;
+#if DUNGEONS_INTERNAL
+    debug_table = platform->debug_table;
+#endif
 
     game_state = (GameState *)platform->persistent_app_data;
     if (!platform->app_initialized)
@@ -365,3 +370,7 @@ AppUpdateAndRender(Platform *platform_)
         game_state->debug_delay_frame_count -= 1;
     }
 }
+
+#if DUNGEONS_INTERNAL
+#include "dungeons_debug.cpp"
+#endif

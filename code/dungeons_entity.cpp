@@ -1340,6 +1340,8 @@ RenderEntityToSprite(Entity *e)
 static inline void
 UpdateAndRenderEntities(void)
 {
+    ProfileScope();
+
     if (!entity_manager->block_simulation && entity_manager->turn_timer <= 0.0f)
     {
         Entity *player = entity_manager->player;

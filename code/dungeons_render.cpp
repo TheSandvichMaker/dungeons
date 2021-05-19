@@ -584,7 +584,7 @@ BeginRender(void)
     Swap(render_state->command_buffer_hash, render_state->prev_command_buffer_hash);
     render_state->command_buffer_hash = 0;
 
-    ZeroStruct(&render_state->light_map);
+    // ZeroStruct(&render_state->light_map);
 }
 
 struct TiledRenderJobParams

@@ -29,6 +29,9 @@ struct Win32AppCode
     uint64_t last_write_time;
 
     AppUpdateAndRenderType *UpdateAndRender;
+#if DUNGEONS_INTERNAL
+    AppDebugEndFrameType *DebugEndFrame;
+#endif
 };
 
 struct PlatformJobEntry

@@ -94,7 +94,7 @@ HandleInput(void)
         button->repeat_count = 0;
     }
 
-    for (PlatformEvent *event = nullptr; NextEvent(&event, PlatformEventFilter_Mouse|PlatformEventFilter_Keyboard);)
+    for (PlatformEvent *event = nullptr; platform->NextEvent(&event, PlatformEventFilter_Mouse|PlatformEventFilter_Keyboard);)
     {
         Button *button = input->binding_map[event->input_code];
         if (button)

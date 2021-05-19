@@ -1,4 +1,35 @@
-static bool
+static inline size_t
+CStringLength(const char *str)
+{
+    size_t result = 0;
+    while (*str++)
+    {
+        result += 1;
+    }
+    return result;
+}
+
+static inline bool
+AreEqual(const char *a, const char *b)
+{
+    bool result = (*a == *b);
+
+    while (*a && *b)
+    {
+        char c1 = *a++;
+        char c2 = *b++;
+
+        if (c1 != c2)
+        {
+            result = false;
+            break;
+        }
+    }
+
+    return result;
+}
+
+static inline bool
 AreEqual(const String &a, const String &b)
 {
     bool result = false;
