@@ -367,16 +367,16 @@ LockWithKey(Entity *e, Entity *key)
 static inline void
 GiveRandomLoot(Entity *e, RandomSeries *entropy)
 {
-    if (RandomChoice(entropy, 4) == 0)
-    {
-        AddToInventory(e, AddGold(MakeV2i(0, 0), RandomRange(entropy, 12, 36)));
-    }
-
     if (RandomChoice(entropy, 10) == 0)
     {
         Entity *small_gem = AddEntity("Small Gem"_str, MakeV2i(0, 0), MakeSprite(Glyph_Diamond, MakeColor(0, 127, 255)));
         SetContactTrigger(small_gem, Trigger_PickUp);
         AddToInventory(e, small_gem);
+    }
+
+    if (!e->inventory.first || RandomChoice(entropy, 4) == 0)
+    {
+        AddToInventory(e, AddGold(MakeV2i(0, 0), RandomRange(entropy, 12, 36)));
     }
 }
 
