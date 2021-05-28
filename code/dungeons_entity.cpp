@@ -846,12 +846,20 @@ InteractWithContainer(Entity *player, Entity *container)
 
     if (Triggered(input->north)) entity_manager->container_selection_index -= 1;
     if (Triggered(input->south)) entity_manager->container_selection_index += 1;
-    entity_manager->container_selection_index %= items.count;
+    if (entity_manager->container_selection_index < 0)
+    {
+        entity_manager->container_selection_index += (int)items.count;
+    }
+    if (entity_manager->container_selection_index >= (int)items.count)
+    {
+        entity_manager->container_selection_index -= (int)items.count;
+    }
 
     if (Triggered(input->east))
     {
         Entity *taken_item = RemoveOrdered(&items, entity_manager->container_selection_index);
         AddToInventory(player, taken_item);
+        entity_manager->container_selection_index = Clamp(entity_manager->container_selection_index, 0, (int)items.count - 1);
     }
 
     Place(&container->inventory, items);
@@ -994,7 +1002,14 @@ PlayerAct(void)
         {
             if (Triggered(input->north)) entity_manager->container_selection_index -= 1;
             if (Triggered(input->south)) entity_manager->container_selection_index += 1;
-            entity_manager->container_selection_index %= count;
+            if (entity_manager->container_selection_index < 0)
+            {
+                entity_manager->container_selection_index += count;
+            }
+            if (entity_manager->container_selection_index >= count)
+            {
+                entity_manager->container_selection_index -= count;
+            }
 
             if (Triggered(input->east))
             {
