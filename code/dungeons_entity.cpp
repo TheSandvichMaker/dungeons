@@ -840,71 +840,6 @@ TryOpen(Entity *e, Entity *other)
 }
 
 static inline void
-InteractWithContainer(Entity *player, Entity *container)
-{
-    EntityArray items = Pull(&container->inventory);
-
-    if (Triggered(input->north)) entity_manager->container_selection_index -= 1;
-    if (Triggered(input->south)) entity_manager->container_selection_index += 1;
-    if (entity_manager->container_selection_index < 0)
-    {
-        entity_manager->container_selection_index += (int)items.count;
-    }
-    if (entity_manager->container_selection_index >= (int)items.count)
-    {
-        entity_manager->container_selection_index -= (int)items.count;
-    }
-
-    if (Triggered(input->east))
-    {
-        Entity *taken_item = RemoveOrdered(&items, entity_manager->container_selection_index);
-        AddToInventory(player, taken_item);
-        entity_manager->container_selection_index = Clamp(entity_manager->container_selection_index, 0, (int)items.count - 1);
-    }
-
-    Place(&container->inventory, items);
-}
-
-static inline void
-DrawEntityList(EntityList *list, Rect2i rect, int highlight_index = -1)
-{
-    EntityArray items = Linearize(list);
-    rect.max.y = Min(rect.max.y, rect.min.y + (int)items.count + 2);
-    rect.max.y = Max(rect.min.y + 3, rect.max.y);
-
-    DrawRectOutline(Layer_Ui, rect, COLOR_WHITE, COLOR_BLACK);
-
-    V2i at_p = MakeV2i(rect.min.x + 3, rect.max.y - 2);
-
-    int item_index = 0;
-    for (size_t i = 0; i < items.count; ++i)
-    {
-        Entity *item = items[i];
-
-        Color text_color = MakeColor(127, 127, 127);
-        if (highlight_index == -1 || item_index == highlight_index)
-        {
-            text_color = COLOR_WHITE;
-        }
-
-        DrawTile(Layer_Ui, at_p - MakeV2i(1, 0), item->sprites[item->sprite_index]);
-
-        String text = PushTempStringF(" %4d %.*s ", item->amount, StringExpand(item->name));
-        DrawText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
-
-        at_p.y -= 1;
-        item_index += 1;
-    }
-
-    if (!items.count)
-    {
-        Color text_color = MakeColor(127, 127, 127);
-        String text = PushTempStringF("  Nothing here...");
-        DrawText(Layer_Ui, at_p, text, text_color, COLOR_BLACK);
-    }
-}
-
-static inline void
 ProcessTrigger(Entity *e, Entity *other)
 {
     if (HasProperty(e, EntityProperty_Unlockable))
@@ -1046,7 +981,28 @@ PlayerAct(void)
 
         if (entity_manager->looking_at_container)
         {
-            InteractWithContainer(player, entity_manager->looking_at_container);
+            Entity *container = entity_manager->looking_at_container;
+            EntityArray items = Pull(&container->inventory);
+
+            if (Triggered(input->north)) entity_manager->container_selection_index -= 1;
+            if (Triggered(input->south)) entity_manager->container_selection_index += 1;
+            if (entity_manager->container_selection_index < 0)
+            {
+                entity_manager->container_selection_index += (int)items.count;
+            }
+            if (entity_manager->container_selection_index >= (int)items.count)
+            {
+                entity_manager->container_selection_index -= (int)items.count;
+            }
+
+            if (Triggered(input->east))
+            {
+                Entity *taken_item = RemoveOrdered(&items, entity_manager->container_selection_index);
+                AddToInventory(player, taken_item);
+                entity_manager->container_selection_index = Clamp(entity_manager->container_selection_index, 0, (int)items.count - 1);
+            }
+
+            Place(&container->inventory, items);
             return false;
         }
     }
