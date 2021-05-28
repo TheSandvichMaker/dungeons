@@ -1120,7 +1120,7 @@ GrowOutwardHalfDim(Rect2i rect, V2i half_dim)
 {
     Rect2i result;
     result.min = rect.min - half_dim;
-    result.max = rect.max - half_dim;
+    result.max = rect.max + half_dim;
     return result;
 }
 

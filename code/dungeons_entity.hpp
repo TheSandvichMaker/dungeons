@@ -200,6 +200,7 @@ struct EntityManager
 
     Entity *player;
     Entity *looking_at_container;
+    bool looking_at_ground;
 
     Entity null_entity;
 

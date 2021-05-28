@@ -23,9 +23,9 @@ GetNextAllocationLocation(Arena *arena, size_t align)
 }
 
 static inline size_t
-GetSizeRemaining(Arena *arena, size_t Align)
+GetSizeRemaining(Arena *arena, size_t align)
 {
-    size_t align_offset = GetAlignOffset(arena, Align);
+    size_t align_offset = GetAlignOffset(arena, align);
     size_t result = arena->capacity - (arena->used + align_offset);
     return result;
 }
@@ -80,21 +80,21 @@ CheckArena(Arena* arena)
 
 #define PushStruct(arena, Type) \
     (Type *)PushSize_(arena, sizeof(Type), alignof(Type), true, LOCATION_STRING(#arena))
-#define PushAlignedStruct(arena, Type, Align) \
-    (Type *)PushSize_(arena, sizeof(Type), Align, true, LOCATION_STRING(#arena))
+#define PushAlignedStruct(arena, Type, align) \
+    (Type *)PushSize_(arena, sizeof(Type), align, true, LOCATION_STRING(#arena))
 #define PushStructNoClear(arena, Type) \
     (Type *)PushSize_(arena, sizeof(Type), alignof(Type), false, LOCATION_STRING(#arena))
-#define PushAlignedStructNoClear(arena, Type, Align) \
-    (Type *)PushSize_(arena, sizeof(Type), Align, false, LOCATION_STRING(#arena))
+#define PushAlignedStructNoClear(arena, Type, align) \
+    (Type *)PushSize_(arena, sizeof(Type), align, false, LOCATION_STRING(#arena))
 
 #define PushArray(arena, Count, Type) \
     (Type *)PushSize_(arena, sizeof(Type)*(Count), alignof(Type), true, LOCATION_STRING(#arena))
-#define PushAlignedArray(arena, Count, Type, Align) \
-    (Type *)PushSize_(arena, sizeof(Type)*(Count), Align, true, LOCATION_STRING(#arena))
+#define PushAlignedArray(arena, Count, Type, align) \
+    (Type *)PushSize_(arena, sizeof(Type)*(Count), align, true, LOCATION_STRING(#arena))
 #define PushArrayNoClear(arena, Count, Type) \
     (Type *)PushSize_(arena, sizeof(Type)*(Count), alignof(Type), false, LOCATION_STRING(#arena))
-#define PushAlignedArrayNoClear(arena, Count, Type, Align) \
-    (Type *)PushSize_(arena, sizeof(Type)*(Count), Align, false, LOCATION_STRING(#arena))
+#define PushAlignedArrayNoClear(arena, Count, Type, align) \
+    (Type *)PushSize_(arena, sizeof(Type)*(Count), align, false, LOCATION_STRING(#arena))
 
 #define PushSize(arena, size) \
     PushSize_(arena, size, 1, true, LOCATION_STRING(#arena))
@@ -106,7 +106,7 @@ CheckArena(Arena* arena)
     PushSize_(arena, size, align, false, LOCATION_STRING(#arena))
 
 static inline void *
-PushSize_(Arena *arena, size_t Size, size_t Align, bool Clear, const char *Tag)
+PushSize_(Arena *arena, size_t size, size_t align, bool clear, const char *tag)
 {
     if (!arena->capacity)
     {
@@ -119,11 +119,11 @@ PushSize_(Arena *arena, size_t Size, size_t Align, bool Clear, const char *Tag)
         // NOTE: Let's align up to page size because that's the minimum allocation granularity anyway,
         //       and the code doing the commit down below assumes our capacity is page aligned.
         arena->capacity = AlignPow2(arena->capacity, platform->page_size);
-        arena->base = (uint8_t *)platform->ReserveMemory(arena->capacity, PlatformMemFlag_NoLeakCheck, Tag);
+        arena->base = (uint8_t *)platform->ReserveMemory(arena->capacity, PlatformMemFlag_NoLeakCheck, tag);
     }
 
-    size_t align_offset = GetAlignOffset(arena, Align);
-    size_t aligned_size = Size + align_offset;
+    size_t align_offset = GetAlignOffset(arena, align);
+    size_t aligned_size = size + align_offset;
 
     Assert((arena->used + aligned_size) <= arena->capacity);
 
@@ -131,17 +131,17 @@ PushSize_(Arena *arena, size_t Size, size_t Align, bool Clear, const char *Tag)
 
     if (arena->committed < (arena->used + aligned_size))
     {
-        size_t CommitSize = AlignPow2(aligned_size, platform->page_size);
-        platform->CommitMemory(arena->base + arena->committed, CommitSize);
-        arena->committed += CommitSize;
+        size_t commit_size = AlignPow2(aligned_size, platform->page_size);
+        platform->CommitMemory(arena->base + arena->committed, commit_size);
+        arena->committed += commit_size;
         Assert(arena->committed >= (arena->used + aligned_size));
     }
 
     void *result = unaligned_base + align_offset;
     arena->used += aligned_size;
 
-    if (Clear) {
-        ZeroSize(aligned_size, result);
+    if (clear) {
+        ZeroSize(size, result);
     }
 
     return result;
@@ -151,12 +151,12 @@ PushSize_(Arena *arena, size_t Size, size_t Align, bool Clear, const char *Tag)
     (Type *)BootstrapPushStruct_(sizeof(Type), alignof(Type), offsetof(Type, Member), \
                                  LOCATION_STRING("Bootstrap " #Type "::" #Member), ##__VA_ARGS__)
 static inline void *
-BootstrapPushStruct_(size_t Size, size_t Align, size_t arenaOffset, const char *Tag, size_t capacity = DEFAULT_ARENA_CAPACITY)
+BootstrapPushStruct_(size_t size, size_t align, size_t arena_offset, const char *tag, size_t capacity = DEFAULT_ARENA_CAPACITY)
 {
     Arena arena = {};
     SetCapacity(&arena, capacity);
-    void *State = PushSize_(&arena, Size, Align, true, Tag);
-    *(Arena *)((char *)State + arenaOffset) = arena;
+    void *State = PushSize_(&arena, size, align, true, tag);
+    *(Arena *)((char *)State + arena_offset) = arena;
     return State;
 }
 

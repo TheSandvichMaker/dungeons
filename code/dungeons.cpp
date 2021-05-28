@@ -319,7 +319,20 @@ AppUpdateAndRender(Platform *platform_)
 
         if (player)
         {
-            DrawEntityList(&player->inventory, MakeRect2iMinDim(2, render_state->ui_top_right.y - 4, 36, 13));
+            StringList list = {};
+            for (Entity *e: Linearize(&player->inventory))
+            {
+                EntityToString(e, &list);
+            }
+            if (!IsEmpty(&list))
+            {
+                V2i p = MakeV2i(2, render_state->ui_top_right.y - 2);
+
+                Rect2i bounds = GetDrawnStringListBounds(Layer_Ui, p, &list);
+                DrawRectOutline(Layer_Ui, GrowOutwardHalfDim(bounds, MakeV2i(1, 1)), COLOR_WHITE, COLOR_BLACK);
+
+                DrawStringList(Layer_Ui, p, &list);
+            }
         }
 
         V2i at_p = MakeV2i(40, render_state->ui_top_right.y - 3);
@@ -330,29 +343,106 @@ AppUpdateAndRender(Platform *platform_)
             DrawText(Layer_Ui, at_p, line->string, COLOR_WHITE, COLOR_BLACK);
             at_p.y -= 1;
         }
-    }
 
-    {
-        StringList list = {};
-        for (Entity *e: GetEntitiesAt(input->world_mouse_p))
         {
-            if (e->seen_by_player)
+            StringList list = {};
+            for (Entity *e: GetEntitiesAt(input->world_mouse_p))
             {
-                EntityToString(e, &list);
+                if (e->seen_by_player)
+                {
+                    EntityToString(e, &list);
+                }
+            }
+
+            if (!IsEmpty(&list))
+            {
+                V2i p = WorldToUi(MakeV2i(0, 1) + input->world_mouse_p);
+
+                StringRenderSpec spec = {};
+                spec.y_align_percentage = 1.0f;
+
+                Rect2i bounds = GetDrawnStringListBounds(Layer_Ui, p, &list, spec);
+                DrawRect(Layer_Ui, bounds, COLOR_BLACK);
+
+                DrawStringList(Layer_Ui, p, &list, spec);
             }
         }
 
-        if (!IsEmpty(&list))
         {
-            V2i p = WorldToUi(MakeV2i(0, 1) + input->world_mouse_p);
+            StringList list = {};
+            int count = 0;
+            for (Entity *e = GetEntityGridCell(player->p);
+                 e;
+                 e = e->next_on_tile)
+            {
+                if (e->handle == player->handle)
+                {
+                    continue;
+                }
 
-            StringRenderSpec spec = {};
-            spec.y_align_percentage = 1.0f;
+                count += 1;
+            }
+            if (count > 0)
+            {
+                size_t i = 0;
+                for (Entity *e = GetEntityGridCell(player->p);
+                     e;
+                     e = e->next_on_tile)
+                {
+                    if (e->handle != player->handle)
+                    {
+                        if (entity_manager->looking_at_ground &&
+                            (i == entity_manager->container_selection_index))
+                        {
+                            PushTempStringF(&list, ">");
+                        }
+                        EntityToString(e, &list);
+                        i += 1;
+                    }
+                }
+            }
+            if (!IsEmpty(&list))
+            {
+                V2i p = WorldToUi(player->p + MakeV2i(0, 1));
 
-            Rect2i bounds = GetDrawnStringListBounds(Layer_Ui, p, &list, spec);
-            DrawRect(Layer_Ui, bounds, COLOR_BLACK);
+                StringRenderSpec spec = {};
+                spec.y_align_percentage = 1.0f;
 
-            DrawStringList(Layer_Ui, p, &list, spec);
+                Rect2i bounds = GetDrawnStringListBounds(Layer_Ui, p, &list, spec);
+                DrawRect(Layer_Ui, bounds, COLOR_BLACK);
+
+                DrawStringList(Layer_Ui, p, &list, spec);
+            }
+        }
+
+        if (entity_manager->looking_at_container)
+        {
+            Entity *container = entity_manager->looking_at_container;
+
+            StringList list = {};
+            EntityArray inventory = Linearize(&container->inventory);
+            for (size_t i = 0; i < inventory.count; i += 1)
+            {
+                Entity *e = inventory[i];
+                if (i == entity_manager->container_selection_index)
+                {
+                    PushTempStringF(&list, ">");
+                }
+                EntityToString(e, &list);
+            }
+
+            if (!IsEmpty(&list))
+            {
+                V2i p = WorldToUi(container->p + MakeV2i(0, 1));
+
+                StringRenderSpec spec = {};
+                spec.y_align_percentage = 1.0f;
+
+                Rect2i bounds = GetDrawnStringListBounds(Layer_Ui, p, &list, spec);
+                DrawRect(Layer_Ui, bounds, COLOR_BLACK);
+
+                DrawStringList(Layer_Ui, p, &list, spec);
+            }
         }
     }
 

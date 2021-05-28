@@ -180,7 +180,7 @@ struct Array
     T *data;
 
     T &
-    operator [](size_t i)
+    operator [](size_t i) const
     {
         AssertSlow(i < count);
         return data[i];
@@ -208,6 +208,18 @@ Push(Array<T> *array_init, T item)
     Array<T> &array = *array_init;
     AssertSlow(array.count < array.capacity);
     array[array.count++] = item;
+}
+
+template <typename T>
+static inline T
+RemoveUnordered(Array<T> *array_init, size_t remove_index)
+{
+    Array<T> &array = *array_init;
+    AssertSlow(remove_index < array.count);
+
+    T result = array[remove_index];
+    array[remove_index] = array[--array.count];
+    return result;
 }
 
 template <typename T>

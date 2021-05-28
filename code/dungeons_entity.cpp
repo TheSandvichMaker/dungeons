@@ -151,6 +151,17 @@ HandleFromEntity(Entity *entity)
     return entity->handle;
 }
 
+static inline Entity *
+GetEntityGridCell(V2i p)
+{
+    Entity *result = nullptr;
+    if (IsInWorld(p))
+    {
+        result = entity_manager->entity_grid[p.x][p.y];
+    }
+    return result;
+}
+
 static inline bool
 RemoveEntityFromGrid(Entity *e)
 {
@@ -914,7 +925,7 @@ ProcessTrigger(Entity *e, Entity *other)
 
         case Trigger_PickUp:
         {
-            AddToInventory(other, e);
+            // AddToInventory(other, e);
         } break;
     }
 }
@@ -934,24 +945,95 @@ PlayerAct(void)
         return false;
     }
 
-    if (Triggered(input->here))
+    bool there_is_stuff_on_the_ground = false;
+    for (Entity *e = GetEntityGridCell(player->p);
+         e;
+         e = e->next_on_tile)
     {
-        entity_manager->looking_at_container = nullptr;
-    }
-
-    if (entity_manager->looking_at_container)
-    {
-        if (!entity_manager->looking_at_container->inventory.first)
+        if (e->handle != player->handle)
         {
-            entity_manager->looking_at_container = nullptr;
+            there_is_stuff_on_the_ground = true;
+            break;
         }
     }
 
-    if (entity_manager->looking_at_container)
+    if (!there_is_stuff_on_the_ground)
     {
-        InteractWithContainer(player, entity_manager->looking_at_container);
-        CleanStaleReferences(&player->inventory);
-        return false;
+        entity_manager->looking_at_ground = false;
+    }
+
+    if (Triggered(input->here))
+    {
+        entity_manager->looking_at_container = nullptr;
+        if (entity_manager->looking_at_ground)
+        {
+            entity_manager->looking_at_ground = false;
+        }
+        else if (there_is_stuff_on_the_ground)
+        {
+            entity_manager->looking_at_ground = true;
+        }
+    }
+
+    if (entity_manager->looking_at_ground)
+    {
+        int count = 0;
+        for (Entity *e = GetEntityGridCell(player->p);
+             e;
+             e = e->next_on_tile)
+        {
+            if (e->handle == player->handle)
+            {
+                continue;
+            }
+
+            count += 1;
+        }
+
+        if (count)
+        {
+            if (Triggered(input->north)) entity_manager->container_selection_index -= 1;
+            if (Triggered(input->south)) entity_manager->container_selection_index += 1;
+            entity_manager->container_selection_index %= count;
+
+            if (Triggered(input->east))
+            {
+                size_t i = 0;
+                for (Entity *e = GetEntityGridCell(player->p);
+                     e;
+                     e = e->next_on_tile)
+                {
+                    if (e->handle == player->handle)
+                    {
+                        continue;
+                    }
+
+                    if (i == entity_manager->container_selection_index)
+                    {
+                        AddToInventory(player, e);
+                        break;
+                    }
+                    i += 1;
+                }
+            }
+            return false;
+        }
+    }
+    else
+    {
+        if (entity_manager->looking_at_container)
+        {
+            if (!entity_manager->looking_at_container->inventory.first)
+            {
+                entity_manager->looking_at_container = nullptr;
+            }
+        }
+
+        if (entity_manager->looking_at_container)
+        {
+            InteractWithContainer(player, entity_manager->looking_at_container);
+            return false;
+        }
     }
 
     V2i move = MakeV2i(0, 0);
@@ -1472,16 +1554,6 @@ UpdateAndRenderEntities(void)
     if (!done_animations)
     {
         entity_manager->block_simulation = true;
-    }
-
-    if (entity_manager->looking_at_container)
-    {
-        Entity *container = entity_manager->looking_at_container;
-
-        if (container->inventory.first)
-        {
-            DrawEntityList(&container->inventory, MakeRect2iMinDim(2, 2, 24, 16), entity_manager->container_selection_index);
-        }
     }
 }
 
