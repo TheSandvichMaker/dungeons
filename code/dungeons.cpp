@@ -226,6 +226,10 @@ AppUpdateAndRender(Platform *platform_)
     debug_table = platform->debug_table;
 #endif
 
+    platform->mutex.lock();
+    platform->DebugPrint("Hello\n");
+    platform->mutex.unlock();
+
     game_state = (GameState *)platform->persistent_app_data;
     if (!platform->app_initialized)
     {
@@ -346,7 +350,9 @@ AppUpdateAndRender(Platform *platform_)
 
         {
             StringList list = {};
-            for (Entity *e: GetEntitiesAt(input->world_mouse_p))
+            for (Entity *e = GetEntitesOnTile(input->world_mouse_p);
+                 e;
+                 e = e->next_on_tile)
             {
                 if (e->seen_by_player)
                 {
@@ -371,7 +377,7 @@ AppUpdateAndRender(Platform *platform_)
         {
             StringList list = {};
             int count = 0;
-            for (Entity *e = GetEntityGridCell(player->p);
+            for (Entity *e = GetEntitesOnTile(player->p);
                  e;
                  e = e->next_on_tile)
             {
@@ -385,7 +391,7 @@ AppUpdateAndRender(Platform *platform_)
             if (count > 0)
             {
                 size_t i = 0;
-                for (Entity *e = GetEntityGridCell(player->p);
+                for (Entity *e = GetEntitesOnTile(player->p);
                      e;
                      e = e->next_on_tile)
                 {

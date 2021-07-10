@@ -152,6 +152,52 @@ EndTicketMutex(TicketMutex *mutex)
     AtomicAdd(&mutex->serving, 1);
 }
 
+#include <atomic>
+#include <immintrin.h>
+
+struct spinlock
+{
+    std::atomic<uint8_t> m_state {0};
+    char cacheLinePad[64];
+    std::atomic<unsigned> m_head {0};
+    std::atomic<unsigned> m_tail {1};
+
+    void lock() {
+        if (m_state.exchange(1, std::memory_order_acquire)) {
+            while (m_state.exchange(2, std::memory_order_acquire))
+                wait();
+        }
+    }
+
+    void unlock() {
+        if (m_state.exchange(0, std::memory_order_release) == 2)
+            signal_one();
+    }
+
+    void wait() {
+        auto head = m_head.fetch_add(1, std::memory_order_relaxed) + 1;
+        uint32_t tail;
+
+        for (;;) {
+            tail = m_tail.load(std::memory_order_relaxed) - 1;
+
+            if (!ring_less_than(tail, head))
+                return;
+
+            _mm_pause();
+        }
+    }
+
+    static bool ring_less_than(unsigned first, unsigned second) {
+        unsigned difference = first - second;
+        return difference > (unsigned{1} << (sizeof(unsigned)*8 - 1));
+    }
+
+    void signal_one() {
+        m_tail.fetch_add(1, std::memory_order_relaxed);
+    }
+};
+
 enum PlatformEventType
 {
     PlatformEvent_None,
@@ -415,6 +461,8 @@ struct Platform
     bool app_initialized;
     bool exe_reloaded;
     void *persistent_app_data;
+
+    spinlock mutex;
 
 #if DUNGEONS_INTERNAL
     struct DebugState *debug_state;

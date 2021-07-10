@@ -878,6 +878,13 @@ Win32_ThreadProc(LPVOID userdata)
     PlatformJobQueue *queue = args->queue;
     SetEvent(args->ready);
 
+    platform->mutex.lock();
+    platform->DebugPrint("Ooga booga, state: %u, head: %u, tail: %u\n",
+                         platform->mutex.m_state.load(),
+                         platform->mutex.m_head.load(),
+                         platform->mutex.m_tail.load());
+    platform->mutex.unlock();
+
     for (;;)
     {
         uint32_t entry_index = queue->next_read;

@@ -152,7 +152,7 @@ HandleFromEntity(Entity *entity)
 }
 
 static inline Entity *
-GetEntityGridCell(V2i p)
+GetEntitesOnTile(V2i p)
 {
     Entity *result = nullptr;
     if (IsInWorld(p))
@@ -889,7 +889,7 @@ PlayerAct(void)
     }
 
     bool there_is_stuff_on_the_ground = false;
-    for (Entity *e = GetEntityGridCell(player->p);
+    for (Entity *e = GetEntitesOnTile(player->p);
          e;
          e = e->next_on_tile)
     {
@@ -921,7 +921,7 @@ PlayerAct(void)
     if (entity_manager->looking_at_ground)
     {
         int count = 0;
-        for (Entity *e = GetEntityGridCell(player->p);
+        for (Entity *e = GetEntitesOnTile(player->p);
              e;
              e = e->next_on_tile)
         {
@@ -949,7 +949,7 @@ PlayerAct(void)
             if (Triggered(input->east))
             {
                 size_t i = 0;
-                for (Entity *e = GetEntityGridCell(player->p);
+                for (Entity *e = GetEntitesOnTile(player->p);
                      e;
                      e = e->next_on_tile)
                 {
