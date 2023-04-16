@@ -18,10 +18,8 @@ enum EntityPropertyKind
     EntityProperty_Dying,
     EntityProperty_BlockMovement,
     EntityProperty_BlockSight,
-    EntityProperty_PlayerControlled,
     EntityProperty_HasVisibilityGrid,
     EntityProperty_Invulnerable,
-    EntityProperty_Unlockable,
     EntityProperty_Door,
     EntityProperty_Volatile,
     EntityProperty_EmitsLight,
@@ -152,7 +150,7 @@ struct Entity
     TriggerKind contact_trigger;
 
     EntityHandle required_key;
-    bool open;
+    bool locked;
 
     V2i seen_p;
     bool seen_by_player;
@@ -180,6 +178,7 @@ struct Entity
     int16_t sprite_count;
     int16_t sprite_index;
     Sprite sprites[4];
+    Sprite sprites_locked[4];
 
     uint64_t properties[(EntityProperty_COUNT + 63) / 64];
 };

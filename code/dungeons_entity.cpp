@@ -267,9 +267,12 @@ AddWall(V2i p)
 static inline Entity *
 AddDoor(V2i p)
 {
-    Entity *e = AddEntity(StringLiteral("Door"), p, MakeSprite('#', MakeColor(255, 127, 0)));
-    SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Door|EntityProperty_Unlockable|EntityProperty_BlockMovement|EntityProperty_BlockSight);
+    Entity *e = AddEntity(StringLiteral("Door"), p, MakeSprite('#', MakeColor(127, 64, 0)));
+	e->sprites_locked[0] = MakeSprite('#', MakeColor(255, 127, 0));
+
+    SetProperties(e, EntityProperty_Invulnerable|EntityProperty_Door|EntityProperty_BlockMovement|EntityProperty_BlockSight);
     SetContactTrigger(e, Trigger_Unblock);
+
     return e;
 }
 
@@ -277,7 +280,7 @@ static inline Entity *
 AddPlayer(V2i p)
 {
     Entity *e = AddEntity(StringLiteral("Player"), p, MakeSprite('@', MakeColor(255, 255, 0)));
-    SetProperties(e, EntityProperty_PlayerControlled|EntityProperty_BlockMovement|EntityProperty_BlockSight|EntityProperty_HasVisibilityGrid);
+    SetProperties(e, EntityProperty_BlockMovement|EntityProperty_BlockSight|EntityProperty_HasVisibilityGrid);
 
     e->health = e->max_health = 100;
     e->faction = Faction_Human;
@@ -318,8 +321,9 @@ AddGold(V2i p, int amount)
 static inline Entity *
 AddChest(V2i p)
 {
-    Entity *e = AddEntity(StringLiteral("Chest"), p, MakeSprite('M', MakeColor(127, 255, 0)));
-    SetProperties(e, EntityProperty_Unlockable|EntityProperty_Invulnerable|EntityProperty_BlockMovement);
+    Entity *e = AddEntity(StringLiteral("Chest"), p, MakeSprite('M', MakeColor(64, 127, 0)));
+	e->sprites_locked[0] = MakeSprite('M', MakeColor(127, 255, 0));
+    SetProperties(e, EntityProperty_Invulnerable|EntityProperty_BlockMovement);
     SetContactTrigger(e, Trigger_Container);
     return e;
 }
@@ -369,8 +373,7 @@ LockWithKey(Entity *e, Entity *key)
 {
     Assert(e->required_key == NullEntityHandle());
     e->required_key = key->handle;
-    e->open = false;
-    SetProperty(e, EntityProperty_Unlockable);
+    e->locked = true;
 
     key->uses += 1;
 }
@@ -398,9 +401,8 @@ KillEntity(Entity *e)
 
     UnsetProperty(e, EntityProperty_Alive);
     RemoveEntityFromGrid(e);
-    if (HasProperty(e, EntityProperty_PlayerControlled))
+    if (e == entity_manager->player)
     {
-        Assert(e == entity_manager->player);
         entity_manager->player = &entity_manager->null_entity;
     }
     e->next_free = entity_manager->first_free_entity;
@@ -807,14 +809,14 @@ FindPath(Arena *arena, V2i start, V2i target)
 static inline bool
 TryOpen(Entity *e, Entity *other)
 {
-    if (e->open)
+    if (!e->locked)
     {
         return true;
     }
 
     if (e->required_key == NullEntityHandle())
     {
-        e->open = true;
+        e->locked = false;
     }
     else
     {
@@ -831,27 +833,24 @@ TryOpen(Entity *e, Entity *other)
                         KillEntity(key);
                     }
                 }
-                e->open = true;
+                e->locked = false;
             }
         }
     }
 
-    return e->open;
+    return !e->locked;
 }
 
 static inline void
 ProcessTrigger(Entity *e, Entity *other)
 {
-    if (HasProperty(e, EntityProperty_Unlockable))
-    {
-        TryOpen(e, other);
+	TryOpen(e, other);
 
-        if (!e->open)
-        {
-            // Must be open to interact with it!
-            return;
-        }
-    }
+	if (e->locked)
+	{
+		// Must be open to interact with it!
+		return;
+	}
 
     switch (e->contact_trigger)
     {
@@ -1376,17 +1375,22 @@ WarmUpEntityVisibilityGrids(void)
 static inline Sprite
 RenderEntityToSprite(Entity *e)
 {
-    Sprite sprite = e->sprites[e->sprite_index];
-    if (e->open)
+    Sprite sprite;
+
+    if (e->locked)
     {
-        sprite.foreground = MakeColor(sprite.foreground.r / 2,
-                                      sprite.foreground.g / 2,
-                                      sprite.foreground.b / 2);
+		sprite = e->sprites_locked[e->sprite_index];
     }
+	else
+	{
+		sprite = e->sprites[e->sprite_index];
+	}
+
     if (e->flash_timer > 0.0f)
     {
         sprite.foreground = e->flash_color;
     }
+
     return sprite;
 }
 
@@ -1489,11 +1493,6 @@ UpdateAndRenderEntities(void)
                 KillEntity(e);
             }
 
-            if (HasProperty(e, EntityProperty_PlayerControlled))
-            {
-                e->seen_by_player = true;
-            }
-
             bool draw = (HasProperty(e, EntityProperty_InWorld) && e->seen_by_player);
             draw |= game_state->debug_fullbright;
             if (draw)
@@ -1558,13 +1557,13 @@ EntityToString(Entity *e, StringList *list)
 
     if (e->required_key != NullEntityHandle())
     {
-        if (e->open)
+        if (e->locked)
         {
-            PushTempStringF(list, " (unlocked)");
+            PushTempStringF(list, " (locked)");
         }
         else
         {
-            PushTempStringF(list, " (locked)");
+            PushTempStringF(list, " (unlocked)");
         }
     }
 
